@@ -16,7 +16,7 @@ use std::io::{self, Read, Write};
 
 /// This trait represents an element of a field.
 pub trait Field:
-    Sized + Eq + Copy + Clone + Send + Sync + fmt::Debug + fmt::Display + 'static + rand::Rand
+    Sized + Eq + Copy + Clone + Send + Sync + fmt::Debug + fmt::Display + 'static + rand::distributions::Distribution<Self>
 {
     /// Returns the zero element of the field, the additive identity.
     fn zero() -> Self;
@@ -100,7 +100,7 @@ pub trait PrimeFieldRepr:
     + fmt::Debug
     + fmt::Display
     + 'static
-    + rand::Rand
+    + rand::distributions::Distribution<Self>
     + AsRef<[u64]>
     + AsMut<[u64]>
     + From<u64>
