@@ -16,6 +16,12 @@ use num_traits::{One, ToPrimitive, Zero};
 use quote::TokenStreamExt;
 use std::str::FromStr;
 
+// use std::mem;
+// #[cfg(target_arch = "x86")]
+// use std::arch::x86::*;
+// #[cfg(target_arch = "x86_64")]
+// use std::arch::x86_64::*;
+
 #[proc_macro_derive(PrimeField, attributes(PrimeFieldModulus, PrimeFieldGenerator))]
 pub fn prime_field(input: proc_macro::TokenStream) -> proc_macro::TokenStream {
     // Parse the type definition
@@ -50,15 +56,13 @@ pub fn prime_field(input: proc_macro::TokenStream) -> proc_macro::TokenStream {
         }
     }
 
+    //println!("PrimeField number of limbs {}", limbs);
+    //println!("Modulus is {}", modulus);
+
     let mut gen = proc_macro2::TokenStream::new();
 
-    let (constants_impl, sqrt_impl) = prime_field_constants_and_sqrt(
-        &ast.ident,
-        &repr_ident,
-        modulus,
-        limbs,
-        generator,
-    );
+    let (constants_impl, sqrt_impl) =
+        prime_field_constants_and_sqrt(&ast.ident, &repr_ident, modulus, limbs, generator);
 
     gen.extend(constants_impl);
     gen.extend(prime_field_repr_impl(&repr_ident, limbs));
@@ -366,7 +370,8 @@ fn biguint_num_bits(mut v: BigUint) -> u32 {
 fn exp(base: BigUint, exp: &BigUint, modulus: &BigUint) -> BigUint {
     let mut ret = BigUint::one();
 
-    for i in exp.to_bytes_be()
+    for i in exp
+        .to_bytes_be()
         .into_iter()
         .flat_map(|x| (0..8).rev().map(move |i| (x >> i).is_odd()))
     {
@@ -387,11 +392,13 @@ fn test_exp() {
             &BigUint::from_str("5489673498567349856734895").unwrap(),
             &BigUint::from_str(
                 "52435875175126190479447740508185965837690552500527637822603658699938581184513"
-            ).unwrap()
+            )
+            .unwrap()
         ),
         BigUint::from_str(
             "4371221214068404307866768905142520595925044802278091865033317963560480051536"
-        ).unwrap()
+        )
+        .unwrap()
     );
 }
 
@@ -430,7 +437,7 @@ fn prime_field_constants_and_sqrt(
 
     let mod_minus_1_over_2 =
         biguint_to_u64_vec((&modulus - BigUint::from_str("1").unwrap()) >> 1, limbs);
-    let legendre_impl = quote!{
+    let legendre_impl = quote! {
         fn legendre(&self) -> ::ff::LegendreSymbol {
             // s = self^((modulus - 1) // 2)
             let s = self.pow(#mod_minus_1_over_2);
@@ -452,7 +459,7 @@ fn prime_field_constants_and_sqrt(
             // Compute -R as (m - r)
             let rneg = biguint_to_u64_vec(&modulus - &r, limbs);
 
-            quote!{
+            quote! {
                 impl ::ff::SqrtField for #name {
                     #legendre_impl
 
@@ -479,7 +486,7 @@ fn prime_field_constants_and_sqrt(
             let t_plus_1_over_2 = biguint_to_u64_vec((&t + BigUint::one()) >> 1, limbs);
             let t = biguint_to_u64_vec(t.clone(), limbs);
 
-            quote!{
+            quote! {
                 impl ::ff::SqrtField for #name {
                     #legendre_impl
 
@@ -526,7 +533,7 @@ fn prime_field_constants_and_sqrt(
                 }
             }
         } else {
-            quote!{}
+            quote! {}
         };
 
     // Compute R^2 mod m
@@ -543,36 +550,39 @@ fn prime_field_constants_and_sqrt(
     }
     inv = inv.wrapping_neg();
 
-    (quote! {
-        /// This is the modulus m of the prime field
-        const MODULUS: #repr = #repr([#(#modulus,)*]);
+    (
+        quote! {
+            /// This is the modulus m of the prime field
+            const MODULUS: #repr = #repr([#(#modulus,)*]);
 
-        /// The number of bits needed to represent the modulus.
-        const MODULUS_BITS: u32 = #modulus_num_bits;
+            /// The number of bits needed to represent the modulus.
+            const MODULUS_BITS: u32 = #modulus_num_bits;
 
-        /// The number of bits that must be shaved from the beginning of
-        /// the representation when randomly sampling.
-        const REPR_SHAVE_BITS: u32 = #repr_shave_bits;
+            /// The number of bits that must be shaved from the beginning of
+            /// the representation when randomly sampling.
+            const REPR_SHAVE_BITS: u32 = #repr_shave_bits;
 
-        /// 2^{limbs*64} mod m
-        const R: #repr = #repr(#r);
+            /// 2^{limbs*64} mod m
+            const R: #repr = #repr(#r);
 
-        /// 2^{limbs*64*2} mod m
-        const R2: #repr = #repr(#r2);
+            /// 2^{limbs*64*2} mod m
+            const R2: #repr = #repr(#r2);
 
-        /// -(m^{-1} mod m) mod m
-        const INV: u64 = #inv;
+            /// -(m^{-1} mod m) mod m
+            const INV: u64 = #inv;
 
-        /// Multiplicative generator of `MODULUS` - 1 order, also quadratic
-        /// nonresidue.
-        const GENERATOR: #repr = #repr(#generator);
+            /// Multiplicative generator of `MODULUS` - 1 order, also quadratic
+            /// nonresidue.
+            const GENERATOR: #repr = #repr(#generator);
 
-        /// 2^s * t = MODULUS - 1 with t odd
-        const S: u32 = #s;
+            /// 2^s * t = MODULUS - 1 with t odd
+            const S: u32 = #s;
 
-        /// 2^s root of unity computed by GENERATOR^t
-        const ROOT_OF_UNITY: #repr = #repr(#root_of_unity);
-    }, sqrt_impl)
+            /// 2^s root of unity computed by GENERATOR^t
+            const ROOT_OF_UNITY: #repr = #repr(#root_of_unity);
+        },
+        sqrt_impl,
+    )
 }
 
 /// Implement PrimeField for the derived type.
@@ -592,9 +602,9 @@ fn prime_field_impl(
     mont_paramlist.append_separated(
         (0..(limbs * 2)).map(|i| (i, get_temp(i))).map(|(i, x)| {
             if i != 0 {
-                quote!{mut #x: u64}
+                quote! {mut #x: u64}
             } else {
-                quote!{#x: u64}
+                quote! {#x: u64}
             }
         }),
         proc_macro2::Punct::new(',', proc_macro2::Spacing::Alone),
@@ -607,8 +617,9 @@ fn prime_field_impl(
         for i in 0..limbs {
             {
                 let temp = get_temp(i);
-                gen.extend(quote!{
+                gen.extend(quote! {
                     let k = #temp.wrapping_mul(INV);
+                    //println!("k {:?} temp {:?} INV {:?} MOD {:?}", k, #temp, INV, MODULUS.0);
                     let mut carry = 0;
                     ::ff::mac_with_carry(#temp, k, MODULUS.0[0], &mut carry);
                 });
@@ -616,7 +627,7 @@ fn prime_field_impl(
 
             for j in 1..limbs {
                 let temp = get_temp(i + j);
-                gen.extend(quote!{
+                gen.extend(quote! {
                     #temp = ::ff::mac_with_carry(#temp, k, MODULUS.0[#j], &mut carry);
                 });
             }
@@ -624,17 +635,17 @@ fn prime_field_impl(
             let temp = get_temp(i + limbs);
 
             if i == 0 {
-                gen.extend(quote!{
+                gen.extend(quote! {
                     #temp = ::ff::adc(#temp, 0, &mut carry);
                 });
             } else {
-                gen.extend(quote!{
+                gen.extend(quote! {
                     #temp = ::ff::adc(#temp, carry2, &mut carry);
                 });
             }
 
             if i != (limbs - 1) {
-                gen.extend(quote!{
+                gen.extend(quote! {
                     let carry2 = carry;
                 });
             }
@@ -643,8 +654,9 @@ fn prime_field_impl(
         for i in 0..limbs {
             let temp = get_temp(limbs + i);
 
-            gen.extend(quote!{
+            gen.extend(quote! {
                 (self.0).0[#i] = #temp;
+                //println!("temp[{}] {:?}", #i, #temp);
             });
         }
 
@@ -655,14 +667,14 @@ fn prime_field_impl(
         let mut gen = proc_macro2::TokenStream::new();
 
         for i in 0..(limbs - 1) {
-            gen.extend(quote!{
+            gen.extend(quote! {
                 let mut carry = 0;
             });
 
             for j in (i + 1)..limbs {
                 let temp = get_temp(i + j);
                 if i == 0 {
-                    gen.extend(quote!{
+                    gen.extend(quote! {
                         let #temp = ::ff::mac_with_carry(0, (#a.0).0[#i], (#a.0).0[#j], &mut carry);
                     });
                 } else {
@@ -674,7 +686,7 @@ fn prime_field_impl(
 
             let temp = get_temp(i + limbs);
 
-            gen.extend(quote!{
+            gen.extend(quote! {
                 let #temp = carry;
             });
         }
@@ -684,21 +696,21 @@ fn prime_field_impl(
             let temp1 = get_temp(limbs * 2 - i - 1);
 
             if i == 1 {
-                gen.extend(quote!{
+                gen.extend(quote! {
                     let #temp0 = #temp1 >> 63;
                 });
             } else if i == (limbs * 2 - 1) {
-                gen.extend(quote!{
+                gen.extend(quote! {
                     let #temp0 = #temp0 << 1;
                 });
             } else {
-                gen.extend(quote!{
+                gen.extend(quote! {
                     let #temp0 = (#temp0 << 1) | (#temp1 >> 63);
                 });
             }
         }
 
-        gen.extend(quote!{
+        gen.extend(quote! {
             let mut carry = 0;
         });
 
@@ -706,7 +718,7 @@ fn prime_field_impl(
             let temp0 = get_temp(i * 2);
             let temp1 = get_temp(i * 2 + 1);
             if i == 0 {
-                gen.extend(quote!{
+                gen.extend(quote! {
                     let #temp0 = ::ff::mac_with_carry(0, (#a.0).0[#i], (#a.0).0[#i], &mut carry);
                 });
             } else {
@@ -715,7 +727,7 @@ fn prime_field_impl(
                 });
             }
 
-            gen.extend(quote!{
+            gen.extend(quote! {
                 let #temp1 = ::ff::adc(#temp1, 0, &mut carry);
             });
         }
@@ -726,7 +738,7 @@ fn prime_field_impl(
             proc_macro2::Punct::new(',', proc_macro2::Spacing::Alone),
         );
 
-        gen.extend(quote!{
+        gen.extend(quote! {
             self.mont_reduce(#mont_calling);
         });
 
@@ -741,7 +753,7 @@ fn prime_field_impl(
         let mut gen = proc_macro2::TokenStream::new();
 
         for i in 0..limbs {
-            gen.extend(quote!{
+            gen.extend(quote! {
                 let mut carry = 0;
             });
 
@@ -749,7 +761,7 @@ fn prime_field_impl(
                 let temp = get_temp(i + j);
 
                 if i == 0 {
-                    gen.extend(quote!{
+                    gen.extend(quote! {
                         let #temp = ::ff::mac_with_carry(0, (#a.0).0[#i], (#b.0).0[#j], &mut carry);
                     });
                 } else {
@@ -761,7 +773,7 @@ fn prime_field_impl(
 
             let temp = get_temp(i + limbs);
 
-            gen.extend(quote!{
+            gen.extend(quote! {
                 let #temp = carry;
             });
         }
@@ -772,294 +784,717 @@ fn prime_field_impl(
             proc_macro2::Punct::new(',', proc_macro2::Spacing::Alone),
         );
 
-        gen.extend(quote!{
+        /*
+                for i in 0..(limbs*2) {
+                    let temp = get_temp(i);
+
+                    gen.extend(quote!{
+                        println!("{:?}", #temp);
+                    });
+                }
+        */
+
+        gen.extend(quote! {
             self.mont_reduce(#mont_calling);
         });
 
         gen
     }
 
-    let squaring_impl = sqr_impl(quote!{self}, limbs);
-    let multiply_impl = mul_impl(quote!{self}, quote!{other}, limbs);
+    let squaring_impl = sqr_impl(quote! {self}, limbs);
+    let multiply_impl = mul_impl(quote! {self}, quote! {other}, limbs);
     let montgomery_impl = mont_impl(limbs);
 
     // (self.0).0[0], (self.0).0[1], ..., 0, 0, 0, 0, ...
     let mut into_repr_params = proc_macro2::TokenStream::new();
     into_repr_params.append_separated(
         (0..limbs)
-            .map(|i| quote!{ (self.0).0[#i] })
-            .chain((0..limbs).map(|_| quote!{0})),
+            .map(|i| quote! { (self.0).0[#i] })
+            .chain((0..limbs).map(|_| quote! {0})),
         proc_macro2::Punct::new(',', proc_macro2::Spacing::Alone),
     );
 
     let top_limb_index = limbs - 1;
 
-    quote!{
-        impl ::std::marker::Copy for #name { }
+    quote! {
+            impl ::std::marker::Copy for #name { }
 
-        impl ::std::clone::Clone for #name {
-            fn clone(&self) -> #name {
-                *self
-            }
-        }
-
-        impl ::std::cmp::PartialEq for #name {
-            fn eq(&self, other: &#name) -> bool {
-                self.0 == other.0
-            }
-        }
-
-        impl ::std::cmp::Eq for #name { }
-
-        impl ::std::fmt::Debug for #name
-        {
-            fn fmt(&self, f: &mut ::std::fmt::Formatter) -> ::std::fmt::Result {
-                write!(f, "{}({:?})", stringify!(#name), self.into_repr())
-            }
-        }
-
-        /// Elements are ordered lexicographically.
-        impl Ord for #name {
-            #[inline(always)]
-            fn cmp(&self, other: &#name) -> ::std::cmp::Ordering {
-                self.into_repr().cmp(&other.into_repr())
-            }
-        }
-
-        impl PartialOrd for #name {
-            #[inline(always)]
-            fn partial_cmp(&self, other: &#name) -> Option<::std::cmp::Ordering> {
-                Some(self.cmp(other))
-            }
-        }
-
-        impl ::std::fmt::Display for #name {
-            fn fmt(&self, f: &mut ::std::fmt::Formatter) -> ::std::fmt::Result {
-                write!(f, "{}({})", stringify!(#name), self.into_repr())
-            }
-        }
-
-        impl ::rand::Rand for #name {
-            /// Computes a uniformly random element using rejection sampling.
-            fn rand<R: ::rand::Rng>(rng: &mut R) -> Self {
-                loop {
-                    let mut tmp = #name(#repr::rand(rng));
-
-                    // Mask away the unused bits at the beginning.
-                    tmp.0.as_mut()[#top_limb_index] &= 0xffffffffffffffff >> REPR_SHAVE_BITS;
-
-                    if tmp.is_valid() {
-                        return tmp
-                    }
-                }
-            }
-        }
-
-        impl From<#name> for #repr {
-            fn from(e: #name) -> #repr {
-                e.into_repr()
-            }
-        }
-
-        impl ::ff::PrimeField for #name {
-            type Repr = #repr;
-
-            fn from_repr(r: #repr) -> Result<#name, PrimeFieldDecodingError> {
-                let mut r = #name(r);
-                if r.is_valid() {
-                    r.mul_assign(&#name(R2));
-
-                    Ok(r)
-                } else {
-                    Err(PrimeFieldDecodingError::NotInField(format!("{}", r.0)))
+            impl ::std::clone::Clone for #name {
+                fn clone(&self) -> #name {
+                    *self
                 }
             }
 
-            fn into_repr(&self) -> #repr {
-                let mut r = *self;
-                r.mont_reduce(
-                    #into_repr_params
-                );
-
-                r.0
-            }
-
-            fn char() -> #repr {
-                MODULUS
-            }
-
-            const NUM_BITS: u32 = MODULUS_BITS;
-
-            const CAPACITY: u32 = Self::NUM_BITS - 1;
-
-            fn multiplicative_generator() -> Self {
-                #name(GENERATOR)
-            }
-
-            const S: u32 = S;
-
-            fn root_of_unity() -> Self {
-                #name(ROOT_OF_UNITY)
-            }
-        }
-
-        impl ::ff::Field for #name {
-            #[inline]
-            fn zero() -> Self {
-                #name(#repr::from(0))
-            }
-
-            #[inline]
-            fn one() -> Self {
-                #name(R)
-            }
-
-            #[inline]
-            fn is_zero(&self) -> bool {
-                self.0.is_zero()
-            }
-
-            #[inline]
-            fn add_assign(&mut self, other: &#name) {
-                // This cannot exceed the backing capacity.
-                self.0.add_nocarry(&other.0);
-
-                // However, it may need to be reduced.
-                self.reduce();
-            }
-
-            #[inline]
-            fn double(&mut self) {
-                // This cannot exceed the backing capacity.
-                self.0.mul2();
-
-                // However, it may need to be reduced.
-                self.reduce();
-            }
-
-            #[inline]
-            fn sub_assign(&mut self, other: &#name) {
-                // If `other` is larger than `self`, we'll need to add the modulus to self first.
-                if other.0 > self.0 {
-                    self.0.add_nocarry(&MODULUS);
-                }
-
-                self.0.sub_noborrow(&other.0);
-            }
-
-            #[inline]
-            fn negate(&mut self) {
-                if !self.is_zero() {
-                    let mut tmp = MODULUS;
-                    tmp.sub_noborrow(&self.0);
-                    self.0 = tmp;
+            impl ::std::cmp::PartialEq for #name {
+                fn eq(&self, other: &#name) -> bool {
+                    self.0 == other.0
                 }
             }
 
-            fn inverse(&self) -> Option<Self> {
-                if self.is_zero() {
-                    None
-                } else {
-                    // Guajardo Kumar Paar Pelzl
-                    // Efficient Software-Implementation of Finite Fields with Applications to Cryptography
-                    // Algorithm 16 (BEA for Inversion in Fp)
+            impl ::std::cmp::Eq for #name { }
 
-                    let one = #repr::from(1);
+            impl ::std::fmt::Debug for #name
+            {
+                fn fmt(&self, f: &mut ::std::fmt::Formatter) -> ::std::fmt::Result {
+                    write!(f, "{}({:?})", stringify!(#name), self.into_repr())
+                }
+            }
 
-                    let mut u = self.0;
-                    let mut v = MODULUS;
-                    let mut b = #name(R2); // Avoids unnecessary reduction step.
-                    let mut c = Self::zero();
+            /// Elements are ordered lexicographically.
+            impl Ord for #name {
+                #[inline(always)]
+                fn cmp(&self, other: &#name) -> ::std::cmp::Ordering {
+                    self.into_repr().cmp(&other.into_repr())
+                }
+            }
 
-                    while u != one && v != one {
-                        while u.is_even() {
-                            u.div2();
+            impl PartialOrd for #name {
+                #[inline(always)]
+                fn partial_cmp(&self, other: &#name) -> Option<::std::cmp::Ordering> {
+                    Some(self.cmp(other))
+                }
+            }
 
-                            if b.0.is_even() {
-                                b.0.div2();
-                            } else {
-                                b.0.add_nocarry(&MODULUS);
-                                b.0.div2();
-                            }
-                        }
+            impl ::std::fmt::Display for #name {
+                fn fmt(&self, f: &mut ::std::fmt::Formatter) -> ::std::fmt::Result {
+                    write!(f, "{}({})", stringify!(#name), self.into_repr())
+                }
+            }
 
-                        while v.is_even() {
-                            v.div2();
+            impl ::rand::Rand for #name {
+                /// Computes a uniformly random element using rejection sampling.
+                fn rand<R: ::rand::Rng>(rng: &mut R) -> Self {
+                    loop {
+                        let mut tmp = #name(#repr::rand(rng));
 
-                            if c.0.is_even() {
-                                c.0.div2();
-                            } else {
-                                c.0.add_nocarry(&MODULUS);
-                                c.0.div2();
-                            }
-                        }
+                        // Mask away the unused bits at the beginning.
+                        tmp.0.as_mut()[#top_limb_index] &= 0xffffffffffffffff >> REPR_SHAVE_BITS;
 
-                        if v < u {
-                            u.sub_noborrow(&v);
-                            b.sub_assign(&c);
-                        } else {
-                            v.sub_noborrow(&u);
-                            c.sub_assign(&b);
+                        if tmp.is_valid() {
+                            return tmp
                         }
                     }
+                }
+            }
 
-                    if u == one {
-                        Some(b)
+            impl From<#name> for #repr {
+                fn from(e: #name) -> #repr {
+                    e.into_repr()
+                }
+            }
+
+            impl ::ff::PrimeField for #name {
+                type Repr = #repr;
+
+                fn from_repr(r: #repr) -> Result<#name, PrimeFieldDecodingError> {
+                    let mut r = #name(r);
+                    if r.is_valid() {
+                        r.mul_assign(&#name(R2));
+
+                        Ok(r)
                     } else {
-                        Some(c)
+                        Err(PrimeFieldDecodingError::NotInField(format!("{}", r.0)))
                     }
                 }
-            }
 
-            #[inline(always)]
-            fn frobenius_map(&mut self, _: usize) {
-                // This has no effect in a prime field.
-            }
+                fn into_repr(&self) -> #repr {
+                    let mut r = *self;
+                    r.mont_reduce(
+                        #into_repr_params
+                    );
 
-            #[inline]
-            fn mul_assign(&mut self, other: &#name)
-            {
-                #multiply_impl
-            }
+                    r.0
+                }
 
-            #[inline]
-            fn square(&mut self)
-            {
-                #squaring_impl
-            }
-        }
+                fn char() -> #repr {
+                    MODULUS
+                }
 
-        impl #name {
-            /// Determines if the element is really in the field. This is only used
-            /// internally.
-            #[inline(always)]
-            fn is_valid(&self) -> bool {
-                self.0 < MODULUS
-            }
+                const NUM_BITS: u32 = MODULUS_BITS;
 
-            /// Subtracts the modulus from this element if this element is not in the
-            /// field. Only used interally.
-            #[inline(always)]
-            fn reduce(&mut self) {
-                if !self.is_valid() {
-                    self.0.sub_noborrow(&MODULUS);
+                const CAPACITY: u32 = Self::NUM_BITS - 1;
+
+                fn multiplicative_generator() -> Self {
+                    #name(GENERATOR)
+                }
+
+                const S: u32 = S;
+
+                fn root_of_unity() -> Self {
+                    #name(ROOT_OF_UNITY)
                 }
             }
 
-            #[inline(always)]
-            fn mont_reduce(
-                &mut self,
-                #mont_paramlist
-            )
-            {
-                // The Montgomery reduction here is based on Algorithm 14.32 in
-                // Handbook of Applied Cryptography
-                // <http://cacr.uwaterloo.ca/hac/about/chap14.pdf>.
+            impl ::ff::Field for #name {
+                #[inline]
+                fn zero() -> Self {
+                    #name(#repr::from(0))
+                }
 
-                #montgomery_impl
+                #[inline]
+                fn one() -> Self {
+                    #name(R)
+                }
 
-                self.reduce();
+                #[inline]
+                fn is_zero(&self) -> bool {
+                    self.0.is_zero()
+                }
+
+                #[inline]
+                fn add_assign(&mut self, other: &#name) {
+                    if #limbs == 4 {
+                        // This cannot exceed the backing capacity.
+                        use std::arch::x86_64::*;
+                        use std::mem;
+
+                        unsafe {
+                            let mut carry = _addcarry_u64(0, (self.0).0[0],
+                                                          (other.0).0[0],
+                                                          &mut (self.0).0[0]);
+                            carry = _addcarry_u64(carry, (self.0).0[1],
+                                                  (other.0).0[1],
+                                                  &mut (self.0).0[1]);
+                            carry = _addcarry_u64(carry, (self.0).0[2],
+                                                  (other.0).0[2],
+                                                  &mut (self.0).0[2]);
+                            _addcarry_u64(carry, (self.0).0[3], (other.0).0[3],
+                                          &mut (self.0).0[3]);
+
+                            let mut s_sub: [u64; 4] = mem::uninitialized();
+
+                            carry = _subborrow_u64(0, (self.0).0[0],
+                                                   MODULUS.0[0],
+                                                   &mut s_sub[0]);
+                            carry = _subborrow_u64(carry, (self.0).0[1],
+                                                   MODULUS.0[1],
+                                                   &mut s_sub[1]);
+                            carry = _subborrow_u64(carry, (self.0).0[2],
+                                                   MODULUS.0[2],
+                                                   &mut s_sub[2]);
+                            carry = _subborrow_u64(carry, (self.0).0[3],
+                                                   MODULUS.0[3],
+                                                   &mut s_sub[3]);
+                            if carry == 0 {
+                               // Direct assign fails since size can be 4 or 6
+                               // Obviously code doesn't work at all for size 6
+                               //(self.0).0 = s_sub;
+                               (self.0).0[0] = s_sub[0];
+                               (self.0).0[1] = s_sub[1];
+                               (self.0).0[2] = s_sub[2];
+                               (self.0).0[3] = s_sub[3];
+                            }
+                        }
+                    } else {
+                        self.0.add_nocarry(&other.0);
+
+                        // However, it may need to be reduced.
+                        self.reduce();
+                    }
+                }
+
+                #[inline]
+                fn double(&mut self) {
+                    // This cannot exceed the backing capacity.
+                    self.0.mul2();
+
+                    // However, it may need to be reduced.
+                    self.reduce();
+                }
+
+                #[inline]
+                fn sub_assign(&mut self, other: &#name) {
+                    // If `other` is larger than `self`, we'll need to add the modulus to self first.
+                    if other.0 > self.0 {
+                        self.0.add_nocarry(&MODULUS);
+                    }
+
+                    self.0.sub_noborrow(&other.0);
+                }
+
+                #[inline]
+                fn negate(&mut self) {
+                    if !self.is_zero() {
+                        let mut tmp = MODULUS;
+                        tmp.sub_noborrow(&self.0);
+                        self.0 = tmp;
+                    }
+                }
+
+                fn inverse(&self) -> Option<Self> {
+                    if self.is_zero() {
+                        None
+                    } else {
+                        // Guajardo Kumar Paar Pelzl
+                        // Efficient Software-Implementation of Finite Fields with Applications to Cryptography
+                        // Algorithm 16 (BEA for Inversion in Fp)
+
+                        let one = #repr::from(1);
+
+                        let mut u = self.0;
+                        let mut v = MODULUS;
+                        let mut b = #name(R2); // Avoids unnecessary reduction step.
+                        let mut c = Self::zero();
+
+                        while u != one && v != one {
+                            while u.is_even() {
+                                u.div2();
+
+                                if b.0.is_even() {
+                                    b.0.div2();
+                                } else {
+                                    b.0.add_nocarry(&MODULUS);
+                                    b.0.div2();
+                                }
+                            }
+
+                            while v.is_even() {
+                                v.div2();
+
+                                if c.0.is_even() {
+                                    c.0.div2();
+                                } else {
+                                    c.0.add_nocarry(&MODULUS);
+                                    c.0.div2();
+                                }
+                            }
+
+                            if v < u {
+                                u.sub_noborrow(&v);
+                                b.sub_assign(&c);
+                            } else {
+                                v.sub_noborrow(&u);
+                                c.sub_assign(&b);
+                            }
+                        }
+
+                        if u == one {
+                            Some(b)
+                        } else {
+                            Some(c)
+                        }
+                    }
+                }
+
+                #[inline(always)]
+                fn frobenius_map(&mut self, _: usize) {
+                    // This has no effect in a prime field.
+                }
+
+                #[inline]
+                fn mul_assign(&mut self, other: &#name)
+                {
+                    //println!("multiply before {:?} {:?} {:?}", (self.0).0, (other.0).0, MODULUS.0);
+                    //println!("multiply before {:?} {:?}", (self.0).0, (other.0).0);
+                    if #limbs == 4 {
+                        //println!("multiply before {:?} {:?}", (self.0).0, (other.0).0);
+                        //println!("foo");
+    // Can remove all other xor rax, rax; however see a minor perf hit due to false flag dependencies.
+                        unsafe {
+                            asm!(
+                                 "xor  rax, rax               \n\
+                                  mov  rdx, [rsi + 8*0]       \n\
+                                  mulx r9,  r8,  [rdi + 8*0]  \n\
+                                  mulx r10, rbx, [rdi + 8*1]  \n\
+                                  adcx r9,  rbx               \n\
+                                  mulx r11, rbx, [rdi + 8*2]  \n\
+                                  adcx r10, rbx               \n\
+                                  mulx r12, rbx, [rdi + 8*3]  \n\
+                                  adcx r11, rbx               \n\
+                                  adcx r12, rax               \n\
+                                  xor  rax, rax               \n\
+                                  mov  rdx, [rsi + 8*1]       \n\
+                                  mulx rbx, rbp, [rdi + 8*0]  \n\
+                                  adcx r9,  rbp               \n\
+                                  adox r10, rbx               \n\
+                                  mulx rbx, rbp, [rdi + 8*1]  \n\
+                                  adcx r10, rbp               \n\
+                                  adox r11, rbx               \n\
+                                  mulx rbx, rbp, [rdi + 8*2]  \n\
+                                  adcx r11, rbp               \n\
+                                  adox r12, rbx               \n\
+                                  mulx r13, rbp, [rdi + 8*3]  \n\
+                                  adcx r12, rbp               \n\
+                                  adox r13, rax               \n\
+                                  adcx r13, rax               \n\
+                                  xor  rax, rax               \n\
+                                  mov  rdx, [rsi + 8*2]       \n\
+                                  mulx rbx, rbp, [rdi + 8*0]  \n\
+                                  adcx r10, rbp               \n\
+                                  adox r11, rbx               \n\
+                                  mulx rbx, rbp, [rdi + 8*1]  \n\
+                                  adcx r11, rbp               \n\
+                                  adox r12, rbx               \n\
+                                  mulx rbx, rbp, [rdi + 8*2]  \n\
+                                  adcx r12, rbp               \n\
+                                  adox r13, rbx               \n\
+                                  mulx r14, rbp, [rdi + 8*3]  \n\
+                                  adcx r13, rbp               \n\
+                                  adox r14, rax               \n\
+                                  adcx r14, rax               \n\
+                                  xor  rax, rax               \n\
+                                  mov  rdx, [rsi + 8*3]       \n\
+                                  mulx rbx, rbp, [rdi + 8*0]  \n\
+                                  adcx r11, rbp               \n\
+                                  adox r12, rbx               \n\
+                                  mulx rbx, rbp, [rdi + 8*1]  \n\
+                                  adcx r12, rbp               \n\
+                                  adox r13, rbx               \n\
+                                  mulx rbx, rbp, [rdi + 8*2]  \n\
+                                  adcx r13, rbp               \n\
+                                  adox r14, rbx               \n\
+                                  mulx r15, rbp, [rdi + 8*3]  \n\
+                                  adcx r14, rbp               \n\
+                                  adox r15, rax               \n\
+                                  adcx r15, rax               \n\
+                                  xor  rax, rax               \n\
+                                  mov  rdx, -4294967297       \n\
+                                  mulx rbp, rdx, r8           \n\
+                                  mov  rcx, 18446744069414584321 \n\
+                                  mulx rbx, rbp, rcx          \n\
+                                  adox r8,  rbp               \n\
+                                  adcx r9,  rbx               \n\
+                                  mov  rcx, 6034159408538082302 \n\
+                                  mulx rbx, rbp, rcx          \n\
+                                  adox r9,  rbp               \n\
+                                  adcx r10, rbx               \n\
+                                  mov  rcx, 3691218898639771653 \n\
+                                  mulx rbx, rbp, rcx          \n\
+                                  adox r10, rbp               \n\
+                                  adcx r11, rbx               \n\
+                                  mov  r8,  8353516859464449352 \n\
+                                  mulx rbx, rbp, r8          \n\
+                                  adox r11, rbp               \n\
+                                  adcx r12, rbx               \n\
+                                  adox r12, rax               \n\
+                                  adcx r13, rax               \n\
+                                  adox r13, rax               \n\
+                                  adcx r14, rax               \n\
+                                  adox r14, rax               \n\
+                                  adcx r15, rax               \n\
+                                  adox r15, rax               \n\
+                                  mov  rdx, -4294967297       \n\
+                                  mulx rbp, rdx, r9           \n\
+                                  mov  rcx, 18446744069414584321 \n\
+                                  mulx rbx, rbp, rcx          \n\
+                                  adox r9,  rbp               \n\
+                                  adcx r10, rbx               \n\
+                                  mov  rcx, 6034159408538082302 \n\
+                                  mulx rbx, rbp, rcx          \n\
+                                  adox r10, rbp               \n\
+                                  adcx r11, rbx               \n\
+                                  mov  r9,  3691218898639771653 \n\
+                                  mulx rbx, rbp, r9          \n\
+                                  adox r11, rbp               \n\
+                                  adcx r12, rbx               \n\
+                                  mulx rbx, rbp, r8           \n\
+                                  adox r12, rbp               \n\
+                                  adcx r13, rbx               \n\
+                                  adox r13, rax               \n\
+                                  adcx r14, rax               \n\
+                                  adox r14, rax               \n\
+                                  adcx r15, rax               \n\
+                                  adox r15, rax               \n\
+                                  mov  rdx, -4294967297       \n\
+                                  mulx rbp, rdx, r10          \n\
+                                  mov  rcx, 18446744069414584321 \n\
+                                  mulx rbx, rbp, rcx          \n\
+                                  adox r10, rbp               \n\
+                                  adcx r11, rbx               \n\
+                                  mov  r10, 6034159408538082302 \n\
+                                  mulx rbx, rbp, r10          \n\
+                                  adox r11, rbp               \n\
+                                  adcx r12, rbx               \n\
+                                  mulx rbx, rbp, r9           \n\
+                                  adox r12, rbp               \n\
+                                  adcx r13, rbx               \n\
+                                  mulx rbx, rbp, r8           \n\
+                                  adox r13, rbp               \n\
+                                  adcx r14, rbx               \n\
+                                  adox r14, rax               \n\
+                                  adcx r15, rax               \n\
+                                  adox r15, rax               \n\
+                                  mov  rdx, -4294967297       \n\
+                                  mulx rbp, rdx, r11          \n\
+                                  mulx rbx, rbp, rcx          \n\
+                                  adox r11, rbp               \n\
+                                  adcx r12, rbx               \n\
+                                  mulx rbx, rbp, r10          \n\
+                                  adox r12, rbp               \n\
+                                  mov  [rdi + 8*0], r12       \n\
+                                  adcx r13, rbx               \n\
+                                  mulx rbx, rbp, r9           \n\
+                                  adox r13, rbp               \n\
+                                  mov  [rdi + 8*1], r13       \n\
+                                  adcx r14, rbx               \n\
+                                  mulx rbx, rbp, r8          \n\
+                                  adox r14, rbp               \n\
+                                  mov  [rdi + 8*2], r14       \n\
+                                  adcx r15, rbx               \n\
+                                  adox r15, rax               \n\
+                                  mov  [rdi + 8*3], r15       \n\
+                                  sub  r12, rcx               \n\
+                                  sbb  r13, r10               \n\
+                                  sbb  r14, r9                \n\
+                                  sbb  r15, r8               \n\
+                                  jb   .L1${:uid}             \n\
+                                  mov  [rdi + 8*1], r13       \n\
+                                  mov  [rdi + 8*0], r12       \n\
+                                  mov  [rdi + 8*2], r14       \n\
+                                  mov  [rdi + 8*3], r15       \n\
+                                .L1${:uid}:                   \n"
+                                 :
+                                 : "{rdi}"(&((self.0).0[0])), "{rsi}"(&((other.0).0[0]))
+                                 : "rax", "rdx", "rbp", "rbx", "rcx", "r8", "r9", "r10", "r11", "r12", "r13", "r14", "r15"
+                                 : "intel", "volatile"
+                            );
+    /*
+    trying non-memory form
+                                  mulx rbx, rbp, [rsi + 8*0]  \n\
+    */
+
+    /*
+    conditional moves more expensive
+                                  mov  r8,  r12               \n\
+                                  mov  r9,  r13               \n\
+                                  mov  r10, r14               \n\
+                                  mov  r11, r15               \n\
+                                  sub  r8,  [rsi + 8*0]       \n\
+                                  sbb  r9,  [rsi + 8*1]       \n\
+                                  sbb  r10, [rsi + 8*2]       \n\
+                                  sbb  r11, [rsi + 8*3]       \n\
+                                  cmovae r12, r8              \n\
+                                  cmovae r13, r9              \n\
+                                  cmovae r14, r10             \n\
+                                  cmovae r15, r11             \n\
+                                  mov [rdi + 8*0], r12        \n\
+                                  mov [rdi + 8*1], r13        \n\
+                                  mov [rdi + 8*2], r14        \n\
+                                  mov [rdi + 8*3], r15        \n"
+    */
+    /*
+    WORKS!
+                            asm!(
+                                 "xor  rax, rax               \n\
+                                  mov  rdx, [rcx + 8*0]       \n\
+                                  mulx r9,  r8,  [rdi + 8*0]  \n\
+                                  mulx r10, rbx, [rdi + 8*1]  \n\
+                                  adcx r9,  rbx               \n\
+                                  mulx r11, rbx, [rdi + 8*2]  \n\
+                                  adcx r10, rbx               \n\
+                                  mulx r12, rbx, [rdi + 8*3]  \n\
+                                  adcx r11, rbx               \n\
+                                  adcx r12, rax               \n\
+                                  xor  rax, rax               \n\
+                                  mov  rdx, [rcx + 8*1]       \n\
+                                  mulx rbx, rbp, [rdi + 8*0]  \n\
+                                  adcx r9,  rbp               \n\
+                                  adox r10, rbx               \n\
+                                  mulx rbx, rbp, [rdi + 8*1]  \n\
+                                  adcx r10, rbp               \n\
+                                  adox r11, rbx               \n\
+                                  mulx rbx, rbp, [rdi + 8*2]  \n\
+                                  adcx r11, rbp               \n\
+                                  adox r12, rbx               \n\
+                                  mulx r13, rbp, [rdi + 8*3]  \n\
+                                  adcx r12, rbp               \n\
+                                  adox r13, rax               \n\
+                                  adcx r13, rax               \n\
+                                  xor  rax, rax               \n\
+                                  mov  rdx, [rcx + 8*2]       \n\
+                                  mulx rbx, rbp, [rdi + 8*0]  \n\
+                                  adcx r10, rbp               \n\
+                                  adox r11, rbx               \n\
+                                  mulx rbx, rbp, [rdi + 8*1]  \n\
+                                  adcx r11, rbp               \n\
+                                  adox r12, rbx               \n\
+                                  mulx rbx, rbp, [rdi + 8*2]  \n\
+                                  adcx r12, rbp               \n\
+                                  adox r13, rbx               \n\
+                                  mulx r14, rbp, [rdi + 8*3]  \n\
+                                  adcx r13, rbp               \n\
+                                  adox r14, rax               \n\
+                                  adcx r14, rax               \n\
+                                  xor  rax, rax               \n\
+                                  mov  rdx, [rcx + 8*3]       \n\
+                                  mulx rbx, rbp, [rdi + 8*0]  \n\
+                                  adcx r11, rbp               \n\
+                                  adox r12, rbx               \n\
+                                  mulx rbx, rbp, [rdi + 8*1]  \n\
+                                  adcx r12, rbp               \n\
+                                  adox r13, rbx               \n\
+                                  mulx rbx, rbp, [rdi + 8*2]  \n\
+                                  adcx r13, rbp               \n\
+                                  adox r14, rbx               \n\
+                                  mulx r15, rbp, [rdi + 8*3]  \n\
+                                  adcx r14, rbp               \n\
+                                  adox r15, rax               \n\
+                                  adcx r15, rax               \n\
+                                  xor  rax, rax               \n\
+                                  mov  rdx, -4294967297       \n\
+                                  mulx rbp, rdx, r8           \n\
+                                  mulx rbx, rbp, [rsi + 8*0]  \n\
+                                  adox r8,  rbp               \n\
+                                  adcx r9,  rbx               \n\
+                                  mulx rbx, rbp, [rsi + 8*1]  \n\
+                                  adox r9,  rbp               \n\
+                                  adcx r10, rbx               \n\
+                                  mulx rbx, rbp, [rsi + 8*2]  \n\
+                                  adox r10, rbp               \n\
+                                  adcx r11, rbx               \n\
+                                  mulx rbx, rbp, [rsi + 8*3]  \n\
+                                  adox r11, rbp               \n\
+                                  adcx r12, rbx               \n\
+                                  adox r12, rax               \n\
+                                  adcx r13, rax               \n\
+                                  adox r13, rax               \n\
+                                  adcx r14, rax               \n\
+                                  adox r14, rax               \n\
+                                  adcx r15, rax               \n\
+                                  adox r15, rax               \n\
+                                  adcx r8,  rax               \n\
+                                  adox r8,  rax               \n\
+                                  mov  rdx, -4294967297       \n\
+                                  mulx rbp, rdx, r9           \n\
+                                  mulx rbx, rbp, [rsi + 8*0]  \n\
+                                  adox r9,  rbp               \n\
+                                  adcx r10, rbx               \n\
+                                  mulx rbx, rbp, [rsi + 8*1]  \n\
+                                  adox r10, rbp               \n\
+                                  adcx r11, rbx               \n\
+                                  mulx rbx, rbp, [rsi + 8*2]  \n\
+                                  adox r11, rbp               \n\
+                                  adcx r12, rbx               \n\
+                                  mulx rbx, rbp, [rsi + 8*3]  \n\
+                                  adox r12, rbp               \n\
+                                  adcx r13, rbx               \n\
+                                  adox r13, rax               \n\
+                                  adcx r14, rax               \n\
+                                  adox r14, rax               \n\
+                                  adcx r15, rax               \n\
+                                  adox r15, rax               \n\
+                                  adcx r8,  rax               \n\
+                                  adox r8,  rax               \n\
+                                  mov  rdx, -4294967297       \n\
+                                  mulx rbp, rdx, r10          \n\
+                                  mulx rbx, rbp, [rsi + 8*0]  \n\
+                                  adox r10, rbp               \n\
+                                  adcx r11, rbx               \n\
+                                  mulx rbx, rbp, [rsi + 8*1]  \n\
+                                  adox r11, rbp               \n\
+                                  adcx r12, rbx               \n\
+                                  mulx rbx, rbp, [rsi + 8*2]  \n\
+                                  adox r12, rbp               \n\
+                                  adcx r13, rbx               \n\
+                                  mulx rbx, rbp, [rsi + 8*3]  \n\
+                                  adox r13, rbp               \n\
+                                  adcx r14, rbx               \n\
+                                  adox r14, rax               \n\
+                                  adcx r15, rax               \n\
+                                  adox r15, rax               \n\
+                                  adcx r8,  rax               \n\
+                                  adox r8,  rax               \n\
+                                  mov  rdx, -4294967297       \n\
+                                  mulx rbp, rdx, r11          \n\
+                                  mulx rbx, rbp, [rsi + 8*0]  \n\
+                                  adox r11, rbp               \n\
+                                  adcx r12, rbx               \n\
+                                  mulx rbx, rbp, [rsi + 8*1]  \n\
+                                  adox r12, rbp               \n\
+                                  adcx r13, rbx               \n\
+                                  mulx rbx, rbp, [rsi + 8*2]  \n\
+                                  adox r13, rbp               \n\
+                                  adcx r14, rbx               \n\
+                                  mulx rbx, rbp, [rsi + 8*3]  \n\
+                                  adox r14, rbp               \n\
+                                  adcx r15, rbx               \n\
+                                  adox r15, rax               \n\
+                                  adcx r8,  rax               \n\
+                                  adox r8,  rax               \n\
+                                  cmp  r8,  0                 \n\
+                                  je   .L2${:uid}             \n\
+                                .L1${:uid}:                   \n\
+                                  sub r12, [rsi + 8*0]        \n\
+                                  sbb r13, [rsi + 8*1]        \n\
+                                  sbb r14, [rsi + 8*2]        \n\
+                                  sbb r15, [rsi + 8*3]        \n\
+                                  sbb r8, 0                   \n\
+                                  jnz  .L1${:uid}             \n\
+                                .L2${:uid}:                   \n\
+                                  mov [rdi + 8*0], r12        \n\
+                                  mov [rdi + 8*1], r13        \n\
+                                  mov [rdi + 8*2], r14        \n\
+                                  mov [rdi + 8*3], r15"
+                                 :
+                                 : "{rdi}"(&((self.0).0[0])), "{rcx}"(&((other.0).0[0])), "{rsi}"(&(MODULUS.0[0]))
+                                 : "rax", "rdx", "rbp", "rbx", "r8", "r9", "r10", "r11", "r12", "r13", "r14", "r15"
+                                 : "intel", "volatile"
+                            );
+    */
+                        }
+
+                                  // with printouts before an after this works
+
+    //                    self.reduce();
+    /*
+                        if !self.is_valid() {
+                           //println!("Need to subtract");
+                           self.0.sub_noborrow(&MODULUS);
+                        }
+    */
+                        //println!("multiply after {:?} {:?}", (self.0).0, (other.0).0);
+
+                        //if (self.0).0[0] == 0 {
+                        //   println!("low result is 0 {:?}", (self.0).0);
+                        //}
+                    }
+                    else {
+                        #multiply_impl
+                    }
+                    //println!("multiply after {:?}", (self.0).0);
+                }
+    /*
+                             //: "{rdi}"((self.0).0), "{rcx}"((other.0).0), "{rsi}"(MODULUS.0), "{rbx}"(INV)
+    */
+
+                #[inline]
+                fn square(&mut self)
+                {
+                    #squaring_impl
+                }
+            }
+
+            impl #name {
+                /// Determines if the element is really in the field. This is only used
+                /// internally.
+                #[inline(always)]
+                fn is_valid(&self) -> bool {
+                    self.0 < MODULUS
+                }
+
+                /// Subtracts the modulus from this element if this element is not in the
+                /// field. Only used interally.
+                #[inline(always)]
+                fn reduce(&mut self) {
+                    if !self.is_valid() {
+                        self.0.sub_noborrow(&MODULUS);
+                    }
+                }
+
+                #[inline(always)]
+                fn mont_reduce(
+                    &mut self,
+                    #mont_paramlist
+                )
+                {
+                    // The Montgomery reduction here is based on Algorithm 14.32 in
+                    // Handbook of Applied Cryptography
+                    // <http://cacr.uwaterloo.ca/hac/about/chap14.pdf>.
+
+                    #montgomery_impl
+
+                    self.reduce();
+                }
             }
         }
-    }
 }
