@@ -16,12 +16,6 @@ use num_traits::{One, ToPrimitive, Zero};
 use quote::TokenStreamExt;
 use std::str::FromStr;
 
-// use std::mem;
-// #[cfg(target_arch = "x86")]
-// use std::arch::x86::*;
-// #[cfg(target_arch = "x86_64")]
-// use std::arch::x86_64::*;
-
 #[proc_macro_derive(PrimeField, attributes(PrimeFieldModulus, PrimeFieldGenerator))]
 pub fn prime_field(input: proc_macro::TokenStream) -> proc_macro::TokenStream {
     // Parse the type definition
@@ -943,7 +937,7 @@ fn prime_field_impl(
 
                 #[inline]
                 fn add_assign(&mut self, other: &#name) {
-                    if #limbs == 4 {
+                    if #limbs == 4 && cfg!(target_arch = "x86_64") {
                         // This cannot exceed the backing capacity.
                         use std::arch::x86_64::*;
                         use std::mem;
@@ -1086,13 +1080,15 @@ fn prime_field_impl(
                 {
                     //println!("multiply before {:?} {:?} {:?}", (self.0).0, (other.0).0, MODULUS.0);
                     //println!("multiply before {:?} {:?}", (self.0).0, (other.0).0);
-                    if #limbs == 4 {
+                    if #limbs == 4 && cfg!(target_arch = "x86_64"){
                         //println!("multiply before {:?} {:?}", (self.0).0, (other.0).0);
                         //println!("foo");
     // Can remove all other xor rax, rax; however see a minor perf hit due to false flag dependencies.
                         unsafe {
                             asm!(
-                                 "xor  rax, rax               \n\
+                                 "# ============ PLEASE STAY \n\
+                                  xor  rax, rax               \n\
+                                  push rbp                    \n\
                                   mov  rdx, [rsi + 8*0]       \n\
                                   mulx r9,  r8,  [rdi + 8*0]  \n\
                                   mulx r10, rbx, [rdi + 8*1]  \n\
@@ -1227,221 +1223,31 @@ fn prime_field_impl(
                                   adox r13, rbp               \n\
                                   mov  [rdi + 8*1], r13       \n\
                                   adcx r14, rbx               \n\
-                                  mulx rbx, rbp, r8          \n\
+                                  mulx rbx, rbp, r8           \n\
                                   adox r14, rbp               \n\
                                   mov  [rdi + 8*2], r14       \n\
                                   adcx r15, rbx               \n\
                                   adox r15, rax               \n\
                                   mov  [rdi + 8*3], r15       \n\
+                                  pop  rbp                    \n\
                                   sub  r12, rcx               \n\
                                   sbb  r13, r10               \n\
                                   sbb  r14, r9                \n\
-                                  sbb  r15, r8               \n\
+                                  sbb  r15, r8                \n\
                                   jb   .L1${:uid}             \n\
                                   mov  [rdi + 8*1], r13       \n\
                                   mov  [rdi + 8*0], r12       \n\
                                   mov  [rdi + 8*2], r14       \n\
                                   mov  [rdi + 8*3], r15       \n\
                                 .L1${:uid}:                   \n"
-                                 :
+                                 : "=&{rdi}"(&((self.0).0[0]))
                                  : "{rdi}"(&((self.0).0[0])), "{rsi}"(&((other.0).0[0]))
                                  : "rax", "rdx", "rbp", "rbx", "rcx", "r8", "r9", "r10", "r11", "r12", "r13", "r14", "r15"
                                  : "intel", "volatile"
                             );
-    /*
-    trying non-memory form
-                                  mulx rbx, rbp, [rsi + 8*0]  \n\
-    */
 
-    /*
-    conditional moves more expensive
-                                  mov  r8,  r12               \n\
-                                  mov  r9,  r13               \n\
-                                  mov  r10, r14               \n\
-                                  mov  r11, r15               \n\
-                                  sub  r8,  [rsi + 8*0]       \n\
-                                  sbb  r9,  [rsi + 8*1]       \n\
-                                  sbb  r10, [rsi + 8*2]       \n\
-                                  sbb  r11, [rsi + 8*3]       \n\
-                                  cmovae r12, r8              \n\
-                                  cmovae r13, r9              \n\
-                                  cmovae r14, r10             \n\
-                                  cmovae r15, r11             \n\
-                                  mov [rdi + 8*0], r12        \n\
-                                  mov [rdi + 8*1], r13        \n\
-                                  mov [rdi + 8*2], r14        \n\
-                                  mov [rdi + 8*3], r15        \n"
-    */
-    /*
-    WORKS!
-                            asm!(
-                                 "xor  rax, rax               \n\
-                                  mov  rdx, [rcx + 8*0]       \n\
-                                  mulx r9,  r8,  [rdi + 8*0]  \n\
-                                  mulx r10, rbx, [rdi + 8*1]  \n\
-                                  adcx r9,  rbx               \n\
-                                  mulx r11, rbx, [rdi + 8*2]  \n\
-                                  adcx r10, rbx               \n\
-                                  mulx r12, rbx, [rdi + 8*3]  \n\
-                                  adcx r11, rbx               \n\
-                                  adcx r12, rax               \n\
-                                  xor  rax, rax               \n\
-                                  mov  rdx, [rcx + 8*1]       \n\
-                                  mulx rbx, rbp, [rdi + 8*0]  \n\
-                                  adcx r9,  rbp               \n\
-                                  adox r10, rbx               \n\
-                                  mulx rbx, rbp, [rdi + 8*1]  \n\
-                                  adcx r10, rbp               \n\
-                                  adox r11, rbx               \n\
-                                  mulx rbx, rbp, [rdi + 8*2]  \n\
-                                  adcx r11, rbp               \n\
-                                  adox r12, rbx               \n\
-                                  mulx r13, rbp, [rdi + 8*3]  \n\
-                                  adcx r12, rbp               \n\
-                                  adox r13, rax               \n\
-                                  adcx r13, rax               \n\
-                                  xor  rax, rax               \n\
-                                  mov  rdx, [rcx + 8*2]       \n\
-                                  mulx rbx, rbp, [rdi + 8*0]  \n\
-                                  adcx r10, rbp               \n\
-                                  adox r11, rbx               \n\
-                                  mulx rbx, rbp, [rdi + 8*1]  \n\
-                                  adcx r11, rbp               \n\
-                                  adox r12, rbx               \n\
-                                  mulx rbx, rbp, [rdi + 8*2]  \n\
-                                  adcx r12, rbp               \n\
-                                  adox r13, rbx               \n\
-                                  mulx r14, rbp, [rdi + 8*3]  \n\
-                                  adcx r13, rbp               \n\
-                                  adox r14, rax               \n\
-                                  adcx r14, rax               \n\
-                                  xor  rax, rax               \n\
-                                  mov  rdx, [rcx + 8*3]       \n\
-                                  mulx rbx, rbp, [rdi + 8*0]  \n\
-                                  adcx r11, rbp               \n\
-                                  adox r12, rbx               \n\
-                                  mulx rbx, rbp, [rdi + 8*1]  \n\
-                                  adcx r12, rbp               \n\
-                                  adox r13, rbx               \n\
-                                  mulx rbx, rbp, [rdi + 8*2]  \n\
-                                  adcx r13, rbp               \n\
-                                  adox r14, rbx               \n\
-                                  mulx r15, rbp, [rdi + 8*3]  \n\
-                                  adcx r14, rbp               \n\
-                                  adox r15, rax               \n\
-                                  adcx r15, rax               \n\
-                                  xor  rax, rax               \n\
-                                  mov  rdx, -4294967297       \n\
-                                  mulx rbp, rdx, r8           \n\
-                                  mulx rbx, rbp, [rsi + 8*0]  \n\
-                                  adox r8,  rbp               \n\
-                                  adcx r9,  rbx               \n\
-                                  mulx rbx, rbp, [rsi + 8*1]  \n\
-                                  adox r9,  rbp               \n\
-                                  adcx r10, rbx               \n\
-                                  mulx rbx, rbp, [rsi + 8*2]  \n\
-                                  adox r10, rbp               \n\
-                                  adcx r11, rbx               \n\
-                                  mulx rbx, rbp, [rsi + 8*3]  \n\
-                                  adox r11, rbp               \n\
-                                  adcx r12, rbx               \n\
-                                  adox r12, rax               \n\
-                                  adcx r13, rax               \n\
-                                  adox r13, rax               \n\
-                                  adcx r14, rax               \n\
-                                  adox r14, rax               \n\
-                                  adcx r15, rax               \n\
-                                  adox r15, rax               \n\
-                                  adcx r8,  rax               \n\
-                                  adox r8,  rax               \n\
-                                  mov  rdx, -4294967297       \n\
-                                  mulx rbp, rdx, r9           \n\
-                                  mulx rbx, rbp, [rsi + 8*0]  \n\
-                                  adox r9,  rbp               \n\
-                                  adcx r10, rbx               \n\
-                                  mulx rbx, rbp, [rsi + 8*1]  \n\
-                                  adox r10, rbp               \n\
-                                  adcx r11, rbx               \n\
-                                  mulx rbx, rbp, [rsi + 8*2]  \n\
-                                  adox r11, rbp               \n\
-                                  adcx r12, rbx               \n\
-                                  mulx rbx, rbp, [rsi + 8*3]  \n\
-                                  adox r12, rbp               \n\
-                                  adcx r13, rbx               \n\
-                                  adox r13, rax               \n\
-                                  adcx r14, rax               \n\
-                                  adox r14, rax               \n\
-                                  adcx r15, rax               \n\
-                                  adox r15, rax               \n\
-                                  adcx r8,  rax               \n\
-                                  adox r8,  rax               \n\
-                                  mov  rdx, -4294967297       \n\
-                                  mulx rbp, rdx, r10          \n\
-                                  mulx rbx, rbp, [rsi + 8*0]  \n\
-                                  adox r10, rbp               \n\
-                                  adcx r11, rbx               \n\
-                                  mulx rbx, rbp, [rsi + 8*1]  \n\
-                                  adox r11, rbp               \n\
-                                  adcx r12, rbx               \n\
-                                  mulx rbx, rbp, [rsi + 8*2]  \n\
-                                  adox r12, rbp               \n\
-                                  adcx r13, rbx               \n\
-                                  mulx rbx, rbp, [rsi + 8*3]  \n\
-                                  adox r13, rbp               \n\
-                                  adcx r14, rbx               \n\
-                                  adox r14, rax               \n\
-                                  adcx r15, rax               \n\
-                                  adox r15, rax               \n\
-                                  adcx r8,  rax               \n\
-                                  adox r8,  rax               \n\
-                                  mov  rdx, -4294967297       \n\
-                                  mulx rbp, rdx, r11          \n\
-                                  mulx rbx, rbp, [rsi + 8*0]  \n\
-                                  adox r11, rbp               \n\
-                                  adcx r12, rbx               \n\
-                                  mulx rbx, rbp, [rsi + 8*1]  \n\
-                                  adox r12, rbp               \n\
-                                  adcx r13, rbx               \n\
-                                  mulx rbx, rbp, [rsi + 8*2]  \n\
-                                  adox r13, rbp               \n\
-                                  adcx r14, rbx               \n\
-                                  mulx rbx, rbp, [rsi + 8*3]  \n\
-                                  adox r14, rbp               \n\
-                                  adcx r15, rbx               \n\
-                                  adox r15, rax               \n\
-                                  adcx r8,  rax               \n\
-                                  adox r8,  rax               \n\
-                                  cmp  r8,  0                 \n\
-                                  je   .L2${:uid}             \n\
-                                .L1${:uid}:                   \n\
-                                  sub r12, [rsi + 8*0]        \n\
-                                  sbb r13, [rsi + 8*1]        \n\
-                                  sbb r14, [rsi + 8*2]        \n\
-                                  sbb r15, [rsi + 8*3]        \n\
-                                  sbb r8, 0                   \n\
-                                  jnz  .L1${:uid}             \n\
-                                .L2${:uid}:                   \n\
-                                  mov [rdi + 8*0], r12        \n\
-                                  mov [rdi + 8*1], r13        \n\
-                                  mov [rdi + 8*2], r14        \n\
-                                  mov [rdi + 8*3], r15"
-                                 :
-                                 : "{rdi}"(&((self.0).0[0])), "{rcx}"(&((other.0).0[0])), "{rsi}"(&(MODULUS.0[0]))
-                                 : "rax", "rdx", "rbp", "rbx", "r8", "r9", "r10", "r11", "r12", "r13", "r14", "r15"
-                                 : "intel", "volatile"
-                            );
-    */
                         }
-
-                                  // with printouts before an after this works
-
-    //                    self.reduce();
-    /*
-                        if !self.is_valid() {
-                           //println!("Need to subtract");
-                           self.0.sub_noborrow(&MODULUS);
-                        }
-    */
+                        // with printouts before an after this works
                         //println!("multiply after {:?} {:?}", (self.0).0, (other.0).0);
 
                         //if (self.0).0[0] == 0 {
@@ -1453,9 +1259,6 @@ fn prime_field_impl(
                     }
                     //println!("multiply after {:?}", (self.0).0);
                 }
-    /*
-                             //: "{rdi}"((self.0).0), "{rcx}"((other.0).0), "{rsi}"(MODULUS.0), "{rbx}"(INV)
-    */
 
                 #[inline]
                 fn square(&mut self)
