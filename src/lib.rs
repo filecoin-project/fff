@@ -11,6 +11,12 @@ extern crate ff_derive;
 #[cfg(feature = "derive")]
 pub use ff_derive::*;
 
+#[cfg(target_arch = "x86_64")]
+mod asm;
+
+#[cfg(target_arch = "x86_64")]
+pub use asm::mod_mul_4w_assign;
+
 use rand_core::RngCore;
 use std::error::Error;
 use std::fmt;

@@ -21,3 +21,6 @@ derive = ["ff_derive"]
 
 [badges]
 maintenance = { status = "actively-developed" }
+
+[build-dependencies]
+cc = "1.0.50"

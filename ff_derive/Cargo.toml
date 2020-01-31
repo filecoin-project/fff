@@ -22,3 +22,4 @@ syn = "1"
 
 [badges]
 maintenance = { status = "passively-maintained" }
+
