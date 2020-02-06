@@ -1,22 +1,16 @@
-# ff
+# fff
 
-`ff` is a finite field library written in pure Rust, with no `unsafe{}` code.
+> Fork of the great [ff](https://github.com/zkcrypto/ff) library.
+
+`fff` is a finite field library written in pure Rust, with no `unsafe{}` code.
 
 ## Disclaimers
 
 * This library does not provide constant-time guarantees.
 
-## Usage
 
-Add the `ff` crate to your `Cargo.toml`:
-
-```toml
-[dependencies]
-ff = "0.4"
-```
-
-The `ff` crate contains `Field`, `PrimeField`, `PrimeFieldRepr` and `SqrtField` traits.
-See the **[documentation](https://docs.rs/ff/)** for more.
+The `fff` crate contains `Field`, `PrimeField`, `PrimeFieldRepr` and `SqrtField` traits.
+See the **[documentation](https://docs.rs/fff/)** for more.
 
 ### #![derive(PrimeField)]
 
@@ -29,7 +23,7 @@ First, enable the `derive` crate feature:
 
 ```toml
 [dependencies]
-ff = { version = "0.4", features = ["derive"] }
+fff = { version = "0.2", features = ["derive"] }
 ```
 
 And then use the macro like so:
@@ -37,7 +31,7 @@ And then use the macro like so:
 ```rust
 extern crate rand;
 #[macro_use]
-extern crate ff;
+extern crate fff;
 
 #[derive(PrimeField)]
 #[PrimeFieldModulus = "52435875175126190479447740508185965837690552500527637822603658699938581184513"]

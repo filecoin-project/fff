@@ -9,7 +9,7 @@
 extern crate ff_derive;
 
 #[cfg(feature = "derive")]
-pub use ff_derive::*;
+pub use fff_derive::*;
 
 #[cfg(target_arch = "x86_64")]
 mod asm;
