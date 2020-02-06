@@ -189,7 +189,7 @@ fn prime_field_repr_impl(repr: &syn::Ident, limbs: usize) -> proc_macro2::TokenS
             }
         }
 
-        impl ::ff::PrimeFieldRepr for #repr {
+        impl ::fff::PrimeFieldRepr for #repr {
             #[inline(always)]
             fn is_odd(&self) -> bool {
                 self.0[0] & 1 == 1
@@ -298,7 +298,7 @@ fn prime_field_repr_impl(repr: &syn::Ident, limbs: usize) -> proc_macro2::TokenS
                 let mut carry = 0;
 
                 for (a, b) in self.0.iter_mut().zip(other.0.iter()) {
-                    *a = ::ff::adc(*a, *b, &mut carry);
+                    *a = ::fff::adc(*a, *b, &mut carry);
                 }
             }
 
@@ -307,7 +307,7 @@ fn prime_field_repr_impl(repr: &syn::Ident, limbs: usize) -> proc_macro2::TokenS
                 let mut borrow = 0;
 
                 for (a, b) in self.0.iter_mut().zip(other.0.iter()) {
-                    *a = ::ff::sbb(*a, *b, &mut borrow);
+                    *a = ::fff::sbb(*a, *b, &mut borrow);
                 }
             }
         }
@@ -422,15 +422,15 @@ fn prime_field_constants_and_sqrt(
     let mod_minus_1_over_2 =
         biguint_to_u64_vec((&modulus - BigUint::from_str("1").unwrap()) >> 1, limbs);
     let legendre_impl = quote! {
-        fn legendre(&self) -> ::ff::LegendreSymbol {
+        fn legendre(&self) -> ::fff::LegendreSymbol {
             // s = self^((modulus - 1) // 2)
             let s = self.pow(#mod_minus_1_over_2);
             if s == Self::zero() {
-                ::ff::LegendreSymbol::Zero
+                ::fff::LegendreSymbol::Zero
             } else if s == Self::one() {
-                ::ff::LegendreSymbol::QuadraticResidue
+                ::fff::LegendreSymbol::QuadraticResidue
             } else {
-                ::ff::LegendreSymbol::QuadraticNonResidue
+                ::fff::LegendreSymbol::QuadraticNonResidue
             }
         }
     };
@@ -444,7 +444,7 @@ fn prime_field_constants_and_sqrt(
             let rneg = biguint_to_u64_vec(&modulus - &r, limbs);
 
             quote! {
-                impl ::ff::SqrtField for #name {
+                impl ::fff::SqrtField for #name {
                     #legendre_impl
 
                     fn sqrt(&self) -> Option<Self> {
@@ -471,7 +471,7 @@ fn prime_field_constants_and_sqrt(
             let t = biguint_to_u64_vec(t.clone(), limbs);
 
             quote! {
-                impl ::ff::SqrtField for #name {
+                impl ::fff::SqrtField for #name {
                     #legendre_impl
 
                     fn sqrt(&self) -> Option<Self> {
@@ -479,9 +479,9 @@ fn prime_field_constants_and_sqrt(
                         // https://eprint.iacr.org/2012/685.pdf (page 12, algorithm 5)
 
                         match self.legendre() {
-                            ::ff::LegendreSymbol::Zero => Some(*self),
-                            ::ff::LegendreSymbol::QuadraticNonResidue => None,
-                            ::ff::LegendreSymbol::QuadraticResidue => {
+                            ::fff::LegendreSymbol::Zero => Some(*self),
+                            ::fff::LegendreSymbol::QuadraticNonResidue => None,
+                            ::fff::LegendreSymbol::QuadraticResidue => {
                                 let mut c = #name(ROOT_OF_UNITY);
                                 let mut r = self.pow(#t_plus_1_over_2);
                                 let mut t = self.pow(#t);
@@ -604,14 +604,14 @@ fn prime_field_impl(
                 gen.extend(quote! {
                     let k = #temp.wrapping_mul(INV);
                     let mut carry = 0;
-                    ::ff::mac_with_carry(#temp, k, MODULUS.0[0], &mut carry);
+                    ::fff::mac_with_carry(#temp, k, MODULUS.0[0], &mut carry);
                 });
             }
 
             for j in 1..limbs {
                 let temp = get_temp(i + j);
                 gen.extend(quote! {
-                    #temp = ::ff::mac_with_carry(#temp, k, MODULUS.0[#j], &mut carry);
+                    #temp = ::fff::mac_with_carry(#temp, k, MODULUS.0[#j], &mut carry);
                 });
             }
 
@@ -619,11 +619,11 @@ fn prime_field_impl(
 
             if i == 0 {
                 gen.extend(quote! {
-                    #temp = ::ff::adc(#temp, 0, &mut carry);
+                    #temp = ::fff::adc(#temp, 0, &mut carry);
                 });
             } else {
                 gen.extend(quote! {
-                    #temp = ::ff::adc(#temp, carry2, &mut carry);
+                    #temp = ::fff::adc(#temp, carry2, &mut carry);
                 });
             }
 
@@ -657,11 +657,11 @@ fn prime_field_impl(
                 let temp = get_temp(i + j);
                 if i == 0 {
                     gen.extend(quote! {
-                        let #temp = ::ff::mac_with_carry(0, (#a.0).0[#i], (#a.0).0[#j], &mut carry);
+                        let #temp = ::fff::mac_with_carry(0, (#a.0).0[#i], (#a.0).0[#j], &mut carry);
                     });
                 } else {
                     gen.extend(quote!{
-                        let #temp = ::ff::mac_with_carry(#temp, (#a.0).0[#i], (#a.0).0[#j], &mut carry);
+                        let #temp = ::fff::mac_with_carry(#temp, (#a.0).0[#i], (#a.0).0[#j], &mut carry);
                     });
                 }
             }
@@ -701,16 +701,16 @@ fn prime_field_impl(
             let temp1 = get_temp(i * 2 + 1);
             if i == 0 {
                 gen.extend(quote! {
-                    let #temp0 = ::ff::mac_with_carry(0, (#a.0).0[#i], (#a.0).0[#i], &mut carry);
+                    let #temp0 = ::fff::mac_with_carry(0, (#a.0).0[#i], (#a.0).0[#i], &mut carry);
                 });
             } else {
                 gen.extend(quote!{
-                    let #temp0 = ::ff::mac_with_carry(#temp0, (#a.0).0[#i], (#a.0).0[#i], &mut carry);
+                    let #temp0 = ::fff::mac_with_carry(#temp0, (#a.0).0[#i], (#a.0).0[#i], &mut carry);
                 });
             }
 
             gen.extend(quote! {
-                let #temp1 = ::ff::adc(#temp1, 0, &mut carry);
+                let #temp1 = ::fff::adc(#temp1, 0, &mut carry);
             });
         }
 
@@ -732,6 +732,38 @@ fn prime_field_impl(
         b: proc_macro2::TokenStream,
         limbs: usize,
     ) -> proc_macro2::TokenStream {
+        if limbs == 4 && cfg!(target_arch = "x86_64") {
+            mul_impl_asm4(a, b)
+        } else {
+            mul_impl_default(a, b, limbs)
+        }
+    }
+
+    fn mul_impl_asm4(
+        a: proc_macro2::TokenStream,
+        b: proc_macro2::TokenStream,
+    ) -> proc_macro2::TokenStream {
+        // x86_64 asm for four limbs
+
+        let default_impl = mul_impl_default(a.clone(), b.clone(), 4);
+
+        let mut gen = proc_macro2::TokenStream::new();
+        gen.extend(quote! {
+            if *::fff::CPU_SUPPORTS_ADX_INSTRUCTION {
+                ::fff::mod_mul_4w_assign(&mut (#a.0).0, &(#b.0).0);
+            } else {
+                #default_impl
+            }
+        });
+
+        gen
+    }
+
+    fn mul_impl_default(
+        a: proc_macro2::TokenStream,
+        b: proc_macro2::TokenStream,
+        limbs: usize,
+    ) -> proc_macro2::TokenStream {
         let mut gen = proc_macro2::TokenStream::new();
 
         for i in 0..limbs {
@@ -744,11 +776,11 @@ fn prime_field_impl(
 
                 if i == 0 {
                     gen.extend(quote! {
-                        let #temp = ::ff::mac_with_carry(0, (#a.0).0[#i], (#b.0).0[#j], &mut carry);
+                        let #temp = ::fff::mac_with_carry(0, (#a.0).0[#i], (#b.0).0[#j], &mut carry);
                     });
                 } else {
                     gen.extend(quote!{
-                        let #temp = ::ff::mac_with_carry(#temp, (#a.0).0[#i], (#b.0).0[#j], &mut carry);
+                        let #temp = ::fff::mac_with_carry(#temp, (#a.0).0[#i], (#b.0).0[#j], &mut carry);
                     });
                 }
             }
@@ -839,7 +871,7 @@ fn prime_field_impl(
             }
         }
 
-        impl ::ff::PrimeField for #name {
+        impl ::fff::PrimeField for #name {
             type Repr = #repr;
 
             fn from_repr(r: #repr) -> Result<#name, PrimeFieldDecodingError> {
@@ -881,7 +913,7 @@ fn prime_field_impl(
             }
         }
 
-        impl ::ff::Field for #name {
+        impl ::fff::Field for #name {
             /// Computes a uniformly random element using rejection sampling.
             fn random<R: ::rand_core::RngCore>(rng: &mut R) -> Self {
                 loop {
@@ -919,11 +951,79 @@ fn prime_field_impl(
 
             #[inline]
             fn add_assign(&mut self, other: &#name) {
-                // This cannot exceed the backing capacity.
-                self.0.add_nocarry(&other.0);
+                if #limbs == 4 && cfg!(target_arch = "x86_64") {
+                    // This cannot exceed the backing capacity.
+                    use std::arch::x86_64::*;
+                    use std::mem;
 
-                // However, it may need to be reduced.
-                self.reduce();
+                    unsafe {
+                        let mut carry = _addcarry_u64(
+                            0,
+                            (self.0).0[0],
+                            (other.0).0[0],
+                            &mut (self.0).0[0]
+                        );
+                        carry = _addcarry_u64(
+                            carry, (self.0).0[1],
+                            (other.0).0[1],
+                            &mut (self.0).0[1]
+                        );
+                        carry = _addcarry_u64(
+                            carry, (self.0).0[2],
+                            (other.0).0[2],
+                            &mut (self.0).0[2]
+                        );
+                        _addcarry_u64(
+                            carry,
+                            (self.0).0[3],
+                            (other.0).0[3],
+                            &mut (self.0).0[3]
+                        );
+
+                        let mut s_sub: [u64; 4] = mem::uninitialized();
+
+                        carry = _subborrow_u64(
+                            0,
+                            (self.0).0[0],
+                            MODULUS.0[0],
+                            &mut s_sub[0]
+                        );
+                        carry = _subborrow_u64(
+                            carry,
+                            (self.0).0[1],
+                            MODULUS.0[1],
+                            &mut s_sub[1]
+                        );
+                        carry = _subborrow_u64(
+                            carry,
+                            (self.0).0[2],
+                            MODULUS.0[2],
+                            &mut s_sub[2]
+                        );
+                        carry = _subborrow_u64(
+                            carry,
+                            (self.0).0[3],
+                            MODULUS.0[3],
+                            &mut s_sub[3]
+                        );
+
+                        if carry == 0 {
+                            // Direct assign fails since size can be 4 or 6
+                            // Obviously code doesn't work at all for size 6
+                            // (self.0).0 = s_sub;
+                            (self.0).0[0] = s_sub[0];
+                            (self.0).0[1] = s_sub[1];
+                            (self.0).0[2] = s_sub[2];
+                            (self.0).0[3] = s_sub[3];
+                        }
+                    }
+                } else {
+                    // This cannot exceed the backing capacity.
+                    self.0.add_nocarry(&other.0);
+
+                    // However, it may need to be reduced.
+                    self.reduce();
+                }
             }
 
             #[inline]

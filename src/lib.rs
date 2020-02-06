@@ -6,10 +6,16 @@
 
 #[cfg(feature = "derive")]
 #[macro_use]
-extern crate ff_derive;
+extern crate fff_derive;
 
 #[cfg(feature = "derive")]
-pub use ff_derive::*;
+pub use fff_derive::*;
+
+#[cfg(target_arch = "x86_64")]
+mod asm;
+
+#[cfg(target_arch = "x86_64")]
+pub use asm::*;
 
 use rand_core::RngCore;
 use std::error::Error;
