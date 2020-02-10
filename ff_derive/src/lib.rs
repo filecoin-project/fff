@@ -16,6 +16,9 @@ use num_traits::{One, ToPrimitive, Zero};
 use quote::TokenStreamExt;
 use std::str::FromStr;
 
+const BLS_381_FR_MODULUS: &str =
+    "52435875175126190479447740508185965837690552500527637822603658699938581184513";
+
 #[proc_macro_derive(PrimeField, attributes(PrimeFieldModulus, PrimeFieldGenerator))]
 pub fn prime_field(input: proc_macro::TokenStream) -> proc_macro::TokenStream {
     // Parse the type definition
@@ -26,8 +29,9 @@ pub fn prime_field(input: proc_macro::TokenStream) -> proc_macro::TokenStream {
         .expect("PrimeField derive only operates over tuple structs of a single item");
 
     // We're given the modulus p of the prime field
-    let modulus: BigUint = fetch_attr("PrimeFieldModulus", &ast.attrs)
-        .expect("Please supply a PrimeFieldModulus attribute")
+    let modulus_raw = fetch_attr("PrimeFieldModulus", &ast.attrs)
+        .expect("Please supply a PrimeFieldModulus attribute");
+    let modulus: BigUint = modulus_raw
         .parse()
         .expect("PrimeFieldModulus should be a number");
 
@@ -57,7 +61,12 @@ pub fn prime_field(input: proc_macro::TokenStream) -> proc_macro::TokenStream {
 
     gen.extend(constants_impl);
     gen.extend(prime_field_repr_impl(&repr_ident, limbs));
-    gen.extend(prime_field_impl(&ast.ident, &repr_ident, limbs));
+    gen.extend(prime_field_impl(
+        &ast.ident,
+        &repr_ident,
+        limbs,
+        &modulus_raw,
+    ));
     gen.extend(sqrt_impl);
 
     // Return the generated impl
@@ -574,6 +583,7 @@ fn prime_field_impl(
     name: &syn::Ident,
     repr: &syn::Ident,
     limbs: usize,
+    modulus_raw: &str,
 ) -> proc_macro2::TokenStream {
     // Returns r{n} as an ident.
     fn get_temp(n: usize) -> syn::Ident {
@@ -731,8 +741,9 @@ fn prime_field_impl(
         a: proc_macro2::TokenStream,
         b: proc_macro2::TokenStream,
         limbs: usize,
+        modulus_raw: &str,
     ) -> proc_macro2::TokenStream {
-        if limbs == 4 && cfg!(target_arch = "x86_64") {
+        if limbs == 4 && modulus_raw == BLS_381_FR_MODULUS && cfg!(target_arch = "x86_64") {
             mul_impl_asm4(a, b)
         } else {
             mul_impl_default(a, b, limbs)
@@ -806,7 +817,7 @@ fn prime_field_impl(
     }
 
     let squaring_impl = sqr_impl(quote! {self}, limbs);
-    let multiply_impl = mul_impl(quote! {self}, quote! {other}, limbs);
+    let multiply_impl = mul_impl(quote! {self}, quote! {other}, limbs, modulus_raw);
     let montgomery_impl = mont_impl(limbs);
 
     // (self.0).0[0], (self.0).0[1], ..., 0, 0, 0, 0, ...
