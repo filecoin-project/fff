@@ -882,6 +882,14 @@ fn prime_field_impl(
             }
         }
 
+        impl #name {
+            pub unsafe fn from_repr_raw(r: #repr) -> #name {
+                let r = #name(r);
+                assert!(r.is_valid(), "invalid element");
+                r
+            }
+        }
+
         impl ::fff::PrimeField for #name {
             type Repr = #repr;
 
