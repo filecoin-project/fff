@@ -128,6 +128,7 @@ fn prime_field_repr_impl(repr: &syn::Ident, limbs: usize) -> proc_macro2::TokenS
     let is_zero_impl = make_is_zero_impl(limbs);
     let is_eq_impl = make_is_eq_impl(limbs);
     let is_one_impl = make_is_one_impl(limbs);
+    let div2_impl = make_div2_impl(limbs);
 
     fn make_is_zero_impl(limbs: usize) -> proc_macro2::TokenStream {
         let mut gen = proc_macro2::TokenStream::new();
@@ -201,6 +202,24 @@ fn prime_field_repr_impl(repr: &syn::Ident, limbs: usize) -> proc_macro2::TokenS
         gen.extend(quote! {
             (self.0)[#len] = ::fff::adc_no_carry(self.0[#len], other.0[#len], &mut carry);
         });
+
+        gen
+    }
+
+    fn make_div2_impl(limbs: usize) -> proc_macro2::TokenStream {
+        let mut gen = proc_macro2::TokenStream::new();
+
+        gen.extend(quote! {
+            let mut t = 0;
+        });
+
+        for i in (0..limbs).rev() {
+            gen.extend(quote! {
+                let t2 = (self.0)[#i] << 63;
+                (self.0)[#i] = ((self.0)[#i] >> 1) | t;
+                t = t2;
+            });
+        }
 
         gen
     }
@@ -339,13 +358,7 @@ fn prime_field_repr_impl(repr: &syn::Ident, limbs: usize) -> proc_macro2::TokenS
 
             #[inline(always)]
             fn div2(&mut self) {
-                let mut t = 0;
-                for i in self.0.iter_mut().rev() {
-                    let t2 = *i << 63;
-                    *i >>= 1;
-                    *i |= t;
-                    t = t2;
-                }
+                #div2_impl
             }
 
             #[inline(always)]
@@ -1189,8 +1202,6 @@ fn prime_field_impl(
                     // Efficient Software-Implementation of Finite Fields with Applications to Cryptography
                     // Algorithm 16 (BEA for Inversion in Fp)
 
-                    let one = #repr::from(1);
-
                     let mut u = self.0;
                     let mut v = MODULUS;
                     let mut b = #name(R2); // Avoids unnecessary reduction step.
@@ -1228,7 +1239,7 @@ fn prime_field_impl(
                         }
                     }
 
-                    if u == one {
+                    if u.is_one() {
                         Some(b)
                     } else {
                         Some(c)
