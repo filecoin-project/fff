@@ -124,8 +124,89 @@ fn fetch_attr(name: &str, attrs: &[syn::Attribute]) -> Option<String> {
 
 // Implement PrimeFieldRepr for the wrapped ident `repr` with `limbs` limbs.
 fn prime_field_repr_impl(repr: &syn::Ident, limbs: usize) -> proc_macro2::TokenStream {
+    let add_nocarry_impl = make_add_nocarry_impl(limbs);
+    let is_zero_impl = make_is_zero_impl(limbs);
+    let is_eq_impl = make_is_eq_impl(limbs);
+    let is_one_impl = make_is_one_impl(limbs);
+
+    fn make_is_zero_impl(limbs: usize) -> proc_macro2::TokenStream {
+        let mut gen = proc_macro2::TokenStream::new();
+        let mut inner = proc_macro2::TokenStream::new();
+
+        for i in (0..limbs).rev() {
+            inner.extend(quote! {
+                (self.0)[#i]
+            });
+            if i > 0 {
+                inner.extend(quote! { | });
+            }
+        }
+
+        gen.extend(quote! {
+            (#inner) == 0
+        });
+
+        gen
+    }
+
+    fn make_is_one_impl(limbs: usize) -> proc_macro2::TokenStream {
+        let mut gen = proc_macro2::TokenStream::new();
+        let mut inner = proc_macro2::TokenStream::new();
+
+        for i in (1..limbs).rev() {
+            inner.extend(quote! {
+                (self.0)[#i]
+            });
+            if i > 1 {
+                inner.extend(quote! { | });
+            }
+        }
+
+        gen.extend(quote! {
+            ((self.0)[0] == 1) && ((#inner) == 0)
+        });
+
+        gen
+    }
+
+    fn make_is_eq_impl(limbs: usize) -> proc_macro2::TokenStream {
+        let mut gen = proc_macro2::TokenStream::new();
+
+        for i in (0..limbs).rev() {
+            gen.extend(quote! {
+                ((self.0)[#i] == (other.0)[#i])
+            });
+            if i > 0 {
+                gen.extend(quote! { && });
+            }
+        }
+
+        gen
+    }
+
+    fn make_add_nocarry_impl(limbs: usize) -> proc_macro2::TokenStream {
+        let mut gen = proc_macro2::TokenStream::new();
+        let len = limbs - 1;
+
+        gen.extend(quote! {
+            let mut carry = 0;
+        });
+
+        for i in 0..len {
+            gen.extend(quote! {
+                (self.0)[#i] = ::fff::adc(self.0[#i], other.0[#i], &mut carry);
+            });
+        }
+
+        gen.extend(quote! {
+            (self.0)[#len] = ::fff::adc_no_carry(self.0[#len], other.0[#len], &mut carry);
+        });
+
+        gen
+    }
+
     quote! {
-        #[derive(Copy, Clone, PartialEq, Eq, Default)]
+        #[derive(Copy, Clone, Default)]
         pub struct #repr(pub [u64; #limbs]);
 
         impl ::std::fmt::Debug for #repr
@@ -150,6 +231,15 @@ fn prime_field_repr_impl(repr: &syn::Ident, limbs: usize) -> proc_macro2::TokenS
                 Ok(())
             }
         }
+
+        impl ::std::cmp::PartialEq for #repr {
+            #[inline]
+            fn eq(&self, other: &#repr) -> bool {
+                #is_eq_impl
+            }
+        }
+
+        impl ::std::cmp::Eq for #repr { }
 
         impl AsRef<[u64]> for #repr {
             #[inline(always)]
@@ -198,6 +288,13 @@ fn prime_field_repr_impl(repr: &syn::Ident, limbs: usize) -> proc_macro2::TokenS
             }
         }
 
+        impl #repr {
+            #[inline(always)]
+            fn is_one(&self) -> bool {
+                #is_one_impl
+            }
+        }
+
         impl ::fff::PrimeFieldRepr for #repr {
             #[inline(always)]
             fn is_odd(&self) -> bool {
@@ -206,12 +303,12 @@ fn prime_field_repr_impl(repr: &syn::Ident, limbs: usize) -> proc_macro2::TokenS
 
             #[inline(always)]
             fn is_even(&self) -> bool {
-                !self.is_odd()
+                self.0[0] & 1 == 0
             }
 
             #[inline(always)]
             fn is_zero(&self) -> bool {
-                self.0.iter().all(|&e| e == 0)
+                #is_zero_impl
             }
 
             #[inline(always)]
@@ -304,11 +401,7 @@ fn prime_field_repr_impl(repr: &syn::Ident, limbs: usize) -> proc_macro2::TokenS
 
             #[inline(always)]
             fn add_nocarry(&mut self, other: &#repr) {
-                let mut carry = 0;
-
-                for (a, b) in self.0.iter_mut().zip(other.0.iter()) {
-                    *a = ::fff::adc(*a, *b, &mut carry);
-                }
+                #add_nocarry_impl
             }
 
             #[inline(always)]
@@ -655,6 +748,28 @@ fn prime_field_impl(
         gen
     }
 
+    fn valid_impl(limbs: usize) -> proc_macro2::TokenStream {
+        // (
+        //   self[2] < modulus[2] || (self[2] == modulus[2] && (
+        //     self[1] < modulus[1] || (self[1] == modulus[1] && (
+        //       self[0] < modulus[0]
+        //     ))
+        //   ))
+        // )
+
+        let mut current = quote! {
+            ((self.0).0[0] < MODULUS.0[0])
+        };
+
+        for i in 1..limbs {
+            current = quote! {
+                ((self.0).0[#i] < MODULUS.0[#i] || ((self.0).0[#i] == MODULUS.0[#i] && #current))
+            };
+        }
+
+        current
+    }
+
     fn sqr_impl(a: proc_macro2::TokenStream, limbs: usize) -> proc_macro2::TokenStream {
         let mut gen = proc_macro2::TokenStream::new();
 
@@ -819,6 +934,7 @@ fn prime_field_impl(
     let squaring_impl = sqr_impl(quote! {self}, limbs);
     let multiply_impl = mul_impl(quote! {self}, quote! {other}, limbs, modulus_raw);
     let montgomery_impl = mont_impl(limbs);
+    let is_valid_impl = valid_impl(limbs);
 
     // (self.0).0[0], (self.0).0[1], ..., 0, 0, 0, 0, ...
     let mut into_repr_params = proc_macro2::TokenStream::new();
@@ -1080,7 +1196,7 @@ fn prime_field_impl(
                     let mut b = #name(R2); // Avoids unnecessary reduction step.
                     let mut c = Self::zero();
 
-                    while u != one && v != one {
+                    while !u.is_one() && !v.is_one() {
                         while u.is_even() {
                             u.div2();
 
@@ -1143,7 +1259,7 @@ fn prime_field_impl(
             /// internally.
             #[inline(always)]
             fn is_valid(&self) -> bool {
-                self.0 < MODULUS
+                #is_valid_impl
             }
 
             /// Subtracts the modulus from this element if this element is not in the

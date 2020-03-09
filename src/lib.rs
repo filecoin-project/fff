@@ -390,6 +390,14 @@ mod arith_impl {
         tmp as u64
     }
 
+    /// Calculate a + b + carry, returning the sum, not updating the carry value
+    #[inline(always)]
+    pub fn adc_no_carry(a: u64, b: u64, carry: &mut u64) -> u64 {
+        let tmp = u128::from(a) + u128::from(b) + u128::from(*carry);
+
+        tmp as u64
+    }
+
     /// Calculate a + (b * c) + carry, returning the least significant digit
     /// and setting carry to the most significant digit.
     #[inline(always)]
