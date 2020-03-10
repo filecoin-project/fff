@@ -379,6 +379,14 @@ mod arith_impl {
         tmp as u64
     }
 
+    /// Calculate a - b - borrow, returning the result, not updating the borrow.
+    #[inline(always)]
+    pub fn sbb_no_borrow(a: u64, b: u64, borrow: &mut u64) -> u64 {
+        let tmp = (1u128 << 64) + u128::from(a) - u128::from(b) - u128::from(*borrow);
+
+        tmp as u64
+    }
+
     /// Calculate a + b + carry, returning the sum and modifying the
     /// carry value.
     #[inline(always)]

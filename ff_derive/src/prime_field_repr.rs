@@ -1,104 +1,11 @@
 // Implement PrimeFieldRepr for the wrapped ident `repr` with `limbs` limbs.
 pub fn prime_field_repr_impl(repr: &syn::Ident, limbs: usize) -> proc_macro2::TokenStream {
     let add_nocarry_impl = make_add_nocarry_impl(limbs);
+    let sub_noborrow_impl = make_sub_noborrow_impl(limbs);
     let is_zero_impl = make_is_zero_impl(limbs);
     let is_eq_impl = make_is_eq_impl(limbs);
     let is_one_impl = make_is_one_impl(limbs);
     let div2_impl = make_div2_impl(limbs);
-
-    fn make_is_zero_impl(limbs: usize) -> proc_macro2::TokenStream {
-        let mut gen = proc_macro2::TokenStream::new();
-        let mut inner = proc_macro2::TokenStream::new();
-
-        for i in (0..limbs).rev() {
-            inner.extend(quote! {
-                (self.0)[#i]
-            });
-            if i > 0 {
-                inner.extend(quote! { | });
-            }
-        }
-
-        gen.extend(quote! {
-            (#inner) == 0
-        });
-
-        gen
-    }
-
-    fn make_is_one_impl(limbs: usize) -> proc_macro2::TokenStream {
-        let mut gen = proc_macro2::TokenStream::new();
-        let mut inner = proc_macro2::TokenStream::new();
-
-        for i in (1..limbs).rev() {
-            inner.extend(quote! {
-                (self.0)[#i]
-            });
-            if i > 1 {
-                inner.extend(quote! { | });
-            }
-        }
-
-        gen.extend(quote! {
-            ((self.0)[0] == 1) && ((#inner) == 0)
-        });
-
-        gen
-    }
-
-    fn make_is_eq_impl(limbs: usize) -> proc_macro2::TokenStream {
-        let mut gen = proc_macro2::TokenStream::new();
-
-        for i in (0..limbs).rev() {
-            gen.extend(quote! {
-                ((self.0)[#i] == (other.0)[#i])
-            });
-            if i > 0 {
-                gen.extend(quote! { && });
-            }
-        }
-
-        gen
-    }
-
-    fn make_add_nocarry_impl(limbs: usize) -> proc_macro2::TokenStream {
-        let mut gen = proc_macro2::TokenStream::new();
-        let len = limbs - 1;
-
-        gen.extend(quote! {
-            let mut carry = 0;
-        });
-
-        for i in 0..len {
-            gen.extend(quote! {
-                (self.0)[#i] = ::fff::adc(self.0[#i], other.0[#i], &mut carry);
-            });
-        }
-
-        gen.extend(quote! {
-            (self.0)[#len] = ::fff::adc_no_carry(self.0[#len], other.0[#len], &mut carry);
-        });
-
-        gen
-    }
-
-    fn make_div2_impl(limbs: usize) -> proc_macro2::TokenStream {
-        let mut gen = proc_macro2::TokenStream::new();
-
-        gen.extend(quote! {
-            let mut t = 0;
-        });
-
-        for i in (0..limbs).rev() {
-            gen.extend(quote! {
-                let t2 = (self.0)[#i] << 63;
-                (self.0)[#i] = ((self.0)[#i] >> 1) | t;
-                t = t2;
-            });
-        }
-
-        gen
-    }
 
     quote! {
         #[derive(Copy, Clone, Default)]
@@ -295,12 +202,123 @@ pub fn prime_field_repr_impl(repr: &syn::Ident, limbs: usize) -> proc_macro2::To
 
             #[inline(always)]
             fn sub_noborrow(&mut self, other: &#repr) {
-                let mut borrow = 0;
-
-                for (a, b) in self.0.iter_mut().zip(other.0.iter()) {
-                    *a = ::fff::sbb(*a, *b, &mut borrow);
-                }
+                #sub_noborrow_impl
             }
         }
     }
+}
+
+fn make_is_zero_impl(limbs: usize) -> proc_macro2::TokenStream {
+    let mut gen = proc_macro2::TokenStream::new();
+    let mut inner = proc_macro2::TokenStream::new();
+
+    for i in (0..limbs).rev() {
+        inner.extend(quote! {
+             (self.0)[#i]
+        });
+        if i > 0 {
+            inner.extend(quote! { | });
+        }
+    }
+
+    gen.extend(quote! {
+        (#inner) == 0
+    });
+
+    gen
+}
+
+fn make_is_one_impl(limbs: usize) -> proc_macro2::TokenStream {
+    let mut gen = proc_macro2::TokenStream::new();
+    let mut inner = proc_macro2::TokenStream::new();
+
+    for i in (1..limbs).rev() {
+        inner.extend(quote! {
+            (self.0)[#i]
+        });
+        if i > 1 {
+            inner.extend(quote! { | });
+        }
+    }
+
+    gen.extend(quote! {
+        ((self.0)[0] == 1) && ((#inner) == 0)
+    });
+
+    gen
+}
+
+fn make_is_eq_impl(limbs: usize) -> proc_macro2::TokenStream {
+    let mut gen = proc_macro2::TokenStream::new();
+
+    for i in (0..limbs).rev() {
+        gen.extend(quote! {
+            ((self.0)[#i] == (other.0)[#i])
+        });
+        if i > 0 {
+            gen.extend(quote! { && });
+        }
+    }
+
+    gen
+}
+
+fn make_add_nocarry_impl(limbs: usize) -> proc_macro2::TokenStream {
+    let mut gen = proc_macro2::TokenStream::new();
+    let len = limbs - 1;
+
+    gen.extend(quote! {
+        let mut carry = 0;
+    });
+
+    for i in 0..len {
+        gen.extend(quote! {
+            (self.0)[#i] = ::fff::adc(self.0[#i], other.0[#i], &mut carry);
+        });
+    }
+
+    gen.extend(quote! {
+        (self.0)[#len] = ::fff::adc_no_carry(self.0[#len], other.0[#len], &mut carry);
+    });
+
+    gen
+}
+
+fn make_sub_noborrow_impl(limbs: usize) -> proc_macro2::TokenStream {
+    let mut gen = proc_macro2::TokenStream::new();
+    let len = limbs - 1;
+
+    gen.extend(quote! {
+        let mut borrow = 0;
+    });
+
+    for i in 0..len {
+        gen.extend(quote! {
+            (self.0)[#i] = ::fff::sbb(self.0[#i], other.0[#i], &mut borrow);
+        });
+    }
+
+    gen.extend(quote! {
+        (self.0)[#len] = ::fff::sbb_no_borrow(self.0[#len], other.0[#len], &mut borrow);
+    });
+
+    gen
+}
+
+fn make_div2_impl(limbs: usize) -> proc_macro2::TokenStream {
+    let mut gen = proc_macro2::TokenStream::new();
+
+    gen.extend(quote! {
+        let mut t = 0;
+    });
+
+    for i in (0..limbs).rev() {
+        gen.extend(quote! {
+            let t2 = (self.0)[#i] << 63;
+            (self.0)[#i] = ((self.0)[#i] >> 1) | t;
+            t = t2;
+        });
+    }
+
+    gen
 }
