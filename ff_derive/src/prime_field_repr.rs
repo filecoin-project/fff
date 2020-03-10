@@ -6,6 +6,7 @@ pub fn prime_field_repr_impl(repr: &syn::Ident, limbs: usize) -> proc_macro2::To
     let is_eq_impl = make_is_eq_impl(limbs);
     let is_one_impl = make_is_one_impl(limbs);
     let div2_impl = make_div2_impl(limbs);
+    let mul2_impl = make_mul2_impl(limbs);
 
     quote! {
         #[derive(Copy, Clone, Default)]
@@ -146,13 +147,7 @@ pub fn prime_field_repr_impl(repr: &syn::Ident, limbs: usize) -> proc_macro2::To
 
             #[inline(always)]
             fn mul2(&mut self) {
-                let mut last = 0;
-                for i in &mut self.0 {
-                    let tmp = *i >> 63;
-                    *i <<= 1;
-                    *i |= last;
-                    last = tmp;
-                }
+                #mul2_impl
             }
 
             #[inline(always)]
@@ -317,6 +312,24 @@ fn make_div2_impl(limbs: usize) -> proc_macro2::TokenStream {
             let t2 = (self.0)[#i] << 63;
             (self.0)[#i] = ((self.0)[#i] >> 1) | t;
             t = t2;
+        });
+    }
+
+    gen
+}
+
+fn make_mul2_impl(limbs: usize) -> proc_macro2::TokenStream {
+    let mut gen = proc_macro2::TokenStream::new();
+
+    gen.extend(quote! {
+        let mut last = 0;
+    });
+
+    for i in 0..limbs {
+        gen.extend(quote! {
+            let tmp = (self.0)[#i] >> 63;
+            (self.0)[#i] = ((self.0)[#i] << 1) | last;
+            last = tmp;
         });
     }
 
