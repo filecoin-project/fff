@@ -2,7 +2,7 @@
 
 > Fork of the great [ff](https://github.com/zkcrypto/ff) library.
 
-`fff` is a finite field library written in pure Rust, with no `unsafe{}` code.
+`fff` is a finite field library written in Rust.
 
 ## Disclaimers
 
