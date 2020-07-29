@@ -1,6 +1,6 @@
 [package]
 name = "fff"
-version = "0.2.3"
+version = "0.2.1"
 authors = ["Sean Bowe <ewillbefull@gmail.com>"]
 description = "Library for building and interfacing with finite fields"
 readme = "README.md"
@@ -12,7 +12,7 @@ edition = "2018"
 
 [dependencies]
 byteorder = "1"
-fff_derive = { version = "0.2.1", path = "ff_derive", optional = true }
+fff_derive = { version = "0.2.0", path = "ff_derive", optional = true }
 rand_core = "0.5"
 lazy_static = "1.4.0"
 
@@ -23,5 +23,5 @@ derive = ["fff_derive"]
 [badges]
 maintenance = { status = "actively-developed" }
 
-[target.'cfg(target_arch = "x86_64")'.build-dependencies]
+[build-dependencies]
 cc = "1.0.50"
