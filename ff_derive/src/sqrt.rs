@@ -1,6 +1,7 @@
+use std::str::FromStr;
+
 use num_bigint::BigUint;
 use num_traits::One;
-use std::str::FromStr;
 
 use crate::util::*;
 
@@ -61,6 +62,31 @@ pub fn sqrt_impl(
                     } else {
                         a1.mul_assign(self);
                         Some(a1)
+                    }
+                }
+            }
+        });
+    } else if (modulus % BigUint::from_str("8").unwrap()) == BigUint::from_str("5").unwrap() {
+        let q_minus_5_div_8 = biguint_to_u64_vec((modulus) >> 3, limbs);
+
+        gen.extend(quote! {
+            impl ::fff::SqrtField for #name {
+                fn sqrt(&self) -> Option<Self> {
+                    // Atkin's algorithm for q mod 8 = 5
+                    let mut tx = self.double();
+                    let mut alpha = tx.pow(#q_minus_5_div_8);
+
+                    let mut beta = alpha.square();
+                    beta.mul_assign(tx);
+                    beta.sub_assign(1);
+                    beta.mul_assign(x);
+                    beta.mul_assign(alpha);
+
+                    let mut square = beta.square();
+                    if square == self {
+                        Some(beta)
+                    } else {
+                        None
                     }
                 }
             }
