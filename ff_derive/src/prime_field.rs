@@ -1,7 +1,57 @@
+use std::ops::{Neg, Sub};
+
+use num_bigint::BigInt;
+use num_bigint::BigUint;
+use num_bigint::ToBigInt;
+use num_bigint::ToBigUint;
 use quote::TokenStreamExt;
+
+use crate::util::*;
 
 const BLS_381_FR_MODULUS: &str =
     "52435875175126190479447740508185965837690552500527637822603658699938581184513";
+
+// https://en.wikipedia.org/wiki/Extended_Euclidean_algorithm
+// r > q, modifies rinv and qinv such that rinv.r - qinv.q = 1
+pub fn extended_euclidean_algo(r: &BigInt, q: &BigInt, r_inv: &mut BigInt, q_inv: &mut BigInt) {
+    let mut s1: BigInt = 0.into();
+    let mut s2: BigInt = 0.into();
+    let mut t1: BigInt = 1.into();
+    let mut t2: BigInt = 0.into();
+    let mut qi: BigInt = 0.into();
+    let mut tmp_muls: BigInt = 0.into();
+    let mut ri_plus_one: BigInt = 0.into();
+    let mut tmp_mult: BigInt = 0.into();
+    let mut a: BigInt = r.to_bigint().unwrap();
+    let mut b: BigInt = q.to_bigint().unwrap();
+
+    *r_inv = 1.into();
+    *q_inv = 0.into();
+
+// r_i+1 = r_i-1 - q_i.r_i
+// s_i+1 = s_i-1 - q_i.s_i
+// t_i+1 = t_i-1 - q_i.s_i
+    while b.cmp(&0.into()) == std::cmp::Ordering::Greater
+    {
+        qi = BigInt::from(&a / &b);
+        ri_plus_one = &a % &b;
+
+        tmp_muls = &s1 * &qi;
+        tmp_mult = &t1 * &qi;
+
+        s2 = s1;
+        t2 = t1;
+
+        s1 = r_inv.to_bigint().unwrap() - &tmp_muls;
+        t1 = q_inv.to_bigint().unwrap() - &tmp_mult;
+        *r_inv = s2;
+        *q_inv = t2;
+
+        a = b;
+        b = ri_plus_one;
+    }
+    *q_inv = q_inv.to_bigint().unwrap().neg();
+}
 
 /// Implement PrimeField for the derived type.
 pub fn prime_field_impl(
@@ -117,7 +167,7 @@ pub fn prime_field_impl(
                         let #temp = ::fff::mac_with_carry(0, (#a.0).0[#i], (#a.0).0[#j], &mut carry);
                     });
                 } else {
-                    gen.extend(quote!{
+                    gen.extend(quote! {
                         let #temp = ::fff::mac_with_carry(#temp, (#a.0).0[#i], (#a.0).0[#j], &mut carry);
                     });
                 }
@@ -161,7 +211,7 @@ pub fn prime_field_impl(
                     let #temp0 = ::fff::mac_with_carry(0, (#a.0).0[#i], (#a.0).0[#i], &mut carry);
                 });
             } else {
-                gen.extend(quote!{
+                gen.extend(quote! {
                     let #temp0 = ::fff::mac_with_carry(#temp0, (#a.0).0[#i], (#a.0).0[#i], &mut carry);
                 });
             }
@@ -195,6 +245,131 @@ pub fn prime_field_impl(
         } else {
             mul_impl_default(a, b, limbs)
         }
+    }
+
+    fn mul_impl_nocarry(
+        a: proc_macro2::TokenStream,
+        b: proc_macro2::TokenStream,
+        limbs: usize,
+    ) -> proc_macro2::TokenStream {
+        let mut gen = proc_macro2::TokenStream::new();
+
+        for i in 0..limbs {
+            gen.extend(quote! {
+                let mut carry = 0;
+            });
+
+            for j in 0..limbs {
+                let temp = get_temp(i + j);
+
+                if i == 0 {
+                    gen.extend(quote! {
+                        let #temp = ::fff::mac_with_carry(0, (#a.0).0[#i], (#b.0).0[#j], &mut carry);
+                    });
+                } else {
+                    gen.extend(quote! {
+                        let #temp = ::fff::mac_with_carry(#temp, (#a.0).0[#i], (#b.0).0[#j], &mut carry);
+                    });
+                }
+            }
+
+            let temp = get_temp(i + limbs);
+
+            gen.extend(quote! {
+                let #temp = carry;
+            });
+        }
+
+        let mut mont_calling = proc_macro2::TokenStream::new();
+        mont_calling.append_separated(
+            (0..(limbs * 2)).map(|i| get_temp(i)),
+            proc_macro2::Punct::new(',', proc_macro2::Spacing::Alone),
+        );
+
+        gen.extend(quote! {
+            self.mont_reduce(#mont_calling);
+        });
+
+        gen
+    }
+
+    fn mul_impl_cios(
+        a: proc_macro2::TokenStream,
+        b: proc_macro2::TokenStream,
+        modulus: &BigUint,
+        limbs: usize,
+    ) -> proc_macro2::TokenStream {
+        let mut gen = proc_macro2::TokenStream::new();
+        let temp = get_temp(limbs + 1);
+
+        for i in 0..limbs {
+            gen.extend(quote! {
+                let mut carry = 0;
+            });
+
+            if i == 0 {
+                gen.extend(quote! {
+                    let (#temp.0).0[0] = ::fff::mac_with_carry(0, (#a.0).0[#i], (#b.0).0[0], &mut carry);
+                });
+                for j in 1..limbs {
+                    gen.extend(quote! {
+                        let (#temp.0).0[#i] = ::fff::mac_with_carry(0, (#a.0).0[#i], (#b.0).0[#j], &mut carry);
+                    });
+                }
+            } else {
+                gen.extend(quote! {
+                carry = (#temp.0).0[0];
+                    let (#temp.0).0[0] = ::fff::mac_with_carry(0, (#a.0).0[#i], (#b.0).0[0], &mut carry);
+                });
+                for j in 1..limbs {
+                    gen.extend(quote! {
+                        let (#temp.0).0[#j] = ::fff::mac_with_carry((#temp.0).0[#j], (#a.0).0[#i], (#b.0).0[#j], &mut carry);
+                    });
+                }
+            }
+
+            let _r: BigInt = BigInt::from(1 << (limbs * 64));
+            let mut _r_inv: BigInt = BigInt::from(1);
+            let mut _q_inv: BigInt = BigInt::from(0);
+            extended_euclidean_algo(&_r, &modulus.to_bigint().unwrap(), &mut _r_inv, &mut _q_inv);
+            _q_inv = _q_inv % _r;
+            let q_inverse = biguint_to_u64_vec(_q_inv.to_biguint().unwrap(), limbs);
+            let q = biguint_to_u64_vec(modulus.to_biguint().unwrap(), limbs);
+
+            gen.extend(quote! {
+                let mut d = carry;
+                let mut m = ::fff::mac_with_carry(0, (#temp.0).0[0], (#q_inverse.0).0[0], &mut carry);
+                carry = ::fff::mac_with_carry((#temp.0).0[0], m, (#q.0).0[0], carry);
+            });
+            for j in 1..limbs {
+                if j == limbs - 1 {
+                    gen.extend(quote! {
+                        carry = ::fff::adc(carry, (#temp.0).0[#limbs])
+                        let (#temp.0).0[#j - 1] = ::fff::mac_with_carry((#temp.0).0[#j], m, (#q.0).0[#j], &mut carry);
+                    });
+                } else {
+                    gen.extend(quote! {
+                        let (#temp.0).0[#j - 1] = ::fff::mac_with_carry((#temp.0).0[#j], m, (#q.0).0[#j], &mut carry);
+                    });
+                }
+                gen.extend(quote! {
+                    let (#temp.0).0[#limbs - 1] = ::fff::adc_no_carry(d, carry, &mut carry);
+                    let (#temp.0).0[#limbs] = ::fff::adc_no_carry(d, carry, &mut carry);
+                });
+            }
+        }
+
+        let mut mont_calling = proc_macro2::TokenStream::new();
+        mont_calling.append_separated(
+            (0..(limbs * 2)).map(|i| get_temp(i)),
+            proc_macro2::Punct::new(',', proc_macro2::Spacing::Alone),
+        );
+
+        gen.extend(quote! {
+            self.mont_reduce(#mont_calling);
+        });
+
+        gen
     }
 
     fn mul_impl_asm4(
@@ -237,7 +412,7 @@ pub fn prime_field_impl(
                         let #temp = ::fff::mac_with_carry(0, (#a.0).0[#i], (#b.0).0[#j], &mut carry);
                     });
                 } else {
-                    gen.extend(quote!{
+                    gen.extend(quote! {
                         let #temp = ::fff::mac_with_carry(#temp, (#a.0).0[#i], (#b.0).0[#j], &mut carry);
                     });
                 }
