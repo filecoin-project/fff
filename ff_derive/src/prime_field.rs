@@ -1,4 +1,5 @@
 use std::ops::{Neg, Sub};
+use std::str::FromStr;
 
 use num_bigint::BigInt;
 use num_bigint::BigUint;
@@ -15,13 +16,13 @@ const BLS_381_FR_MODULUS: &str =
 // r > q, modifies rinv and qinv such that rinv.r - qinv.q = 1
 pub fn extended_euclidean_algo(r: &BigInt, q: &BigInt, r_inv: &mut BigInt, q_inv: &mut BigInt) {
     let mut s1: BigInt = 0.into();
-    let mut s2: BigInt = 0.into();
+    let mut s2: BigInt;
     let mut t1: BigInt = 1.into();
-    let mut t2: BigInt = 0.into();
-    let mut qi: BigInt = 0.into();
-    let mut tmp_muls: BigInt = 0.into();
-    let mut ri_plus_one: BigInt = 0.into();
-    let mut tmp_mult: BigInt = 0.into();
+    let mut t2: BigInt;
+    let mut qi: BigInt;
+    let mut tmp_muls: BigInt;
+    let mut ri_plus_one: BigInt;
+    let mut tmp_mult: BigInt;
     let mut a: BigInt = r.to_bigint().unwrap();
     let mut b: BigInt = q.to_bigint().unwrap();
 
@@ -242,42 +243,28 @@ pub fn prime_field_impl(
     ) -> proc_macro2::TokenStream {
         if limbs == 4 && modulus_raw == BLS_381_FR_MODULUS && cfg!(target_arch = "x86_64") {
             mul_impl_asm4(a, b)
+            // } else if limbs <= 12 && biguint_to_u64_vec(BigUint::from_str(modulus_raw).unwrap(), limbs)[limbs - 1] <= (0 as u64 >> 1) - 1 {
+            //     mul_impl_no_carry(a, b, BigUint::from_str(modulus_raw).unwrap(), limbs)
         } else {
             mul_impl_default(a, b, limbs)
         }
     }
 
-    fn mul_impl_nocarry(
+    fn mul_impl_no_carry(
         a: proc_macro2::TokenStream,
         b: proc_macro2::TokenStream,
+        modulus: &BigUint,
         limbs: usize,
     ) -> proc_macro2::TokenStream {
         let mut gen = proc_macro2::TokenStream::new();
 
+        let temp = get_temp(limbs);
+        gen.extend(quote! {
+            let mut carry = vec![0; 3];
+        });
+
         for i in 0..limbs {
-            gen.extend(quote! {
-                let mut carry = 0;
-            });
-
-            for j in 0..limbs {
-                let temp = get_temp(i + j);
-
-                if i == 0 {
-                    gen.extend(quote! {
-                        let #temp = ::fff::mac_with_carry(0, (#a.0).0[#i], (#b.0).0[#j], &mut carry);
-                    });
-                } else {
-                    gen.extend(quote! {
-                        let #temp = ::fff::mac_with_carry(#temp, (#a.0).0[#i], (#b.0).0[#j], &mut carry);
-                    });
-                }
-            }
-
-            let temp = get_temp(i + limbs);
-
-            gen.extend(quote! {
-                let #temp = carry;
-            });
+            if i == 0 {} else {}
         }
 
         let mut mont_calling = proc_macro2::TokenStream::new();
