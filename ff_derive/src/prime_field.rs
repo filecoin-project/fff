@@ -352,6 +352,16 @@ pub fn prime_field_impl(
             }
         }
 
+        let mut mont_calling = proc_macro2::TokenStream::new();
+        mont_calling.append_separated(
+            (0..(limbs * 2)).map(|i| get_temp(i)),
+            proc_macro2::Punct::new(',', proc_macro2::Spacing::Alone),
+        );
+
+        gen.extend(quote! {
+            self.mont_reduce(#mont_calling);
+        });
+
         gen
     }
 
