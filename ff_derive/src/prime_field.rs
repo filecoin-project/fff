@@ -258,24 +258,99 @@ pub fn prime_field_impl(
     ) -> proc_macro2::TokenStream {
         let mut gen = proc_macro2::TokenStream::new();
 
-        let temp = get_temp(limbs);
+        let _r: BigInt = BigInt::from(1 << (limbs * 64));
+        let mut _r_inv: BigInt = BigInt::from(1);
+        let mut _q_inv: BigInt = BigInt::from(0);
+        extended_euclidean_algo(&_r, &modulus.to_bigint().unwrap(), &mut _r_inv, &mut _q_inv);
+        _q_inv = _q_inv % _r;
+        let q_inverse = biguint_to_u64_vec(_q_inv.to_biguint().unwrap(), limbs);
+        let q = biguint_to_u64_vec(modulus.to_biguint().unwrap(), limbs);
+
         gen.extend(quote! {
-            let mut carry = vec![0; 3];
+            let mut c = 0;
+            let mut c0 = 0;
+            let mut c1 = 0;
+            let mut c2 = 0;
         });
 
         for i in 0..limbs {
-            if i == 0 {} else {}
+            gen.extend(quote! {
+                let mut v = (#a.0).0[#i];
+            });
+            if i == 0 {
+                gen.extend(quote! {
+                    c0 = ::fff::mac_with_carry(0, v, (#b.0).0[0], &mut c1);
+                    let mut m = c0 * (#q_inverse.0).0[0];
+                    c = ::fff::mac_with_carry(c0, m, (#q.0).0[0], &mut c2);
+                });
+                for j in 1..limbs - 1 {
+                    gen.extend(quote! {
+                        c0 = ::fff::mac_with_carry(c1, v, (#b.0).0[#j], &mut c1);
+                    });
+                    let temp0 = get_temp(j - 1);
+                    let temp1 = get_temp(limbs - 1);
+                    if j == limbs - 1 {
+                        gen.extend(quote! {
+                            let #temp1 = 0;
+                            let #temp0 = ::fff::mac_with_carry(c0 + c1 + c2, m, (#q.0).0[#j], &mut #temp1);
+                        });
+                    } else {
+                        gen.extend(quote! {
+                            let #temp1 = 0;
+                            let #temp0 = ::fff::mac_with_carry(c0 + c2, m, (#q.0).0[#j], &mut c2);
+                        });
+                    }
+                }
+            } else if i == limbs - 1 {
+                let temp0 = get_temp(0);
+                gen.extend(quote! {
+                    c0 = ::fff::mac_with_carry(#temp0, v, (#b.0).0[0], &mut c1);
+                    let mut m = c0 * (#q_inverse.0).0[0];
+                    c = ::fff::mac_with_carry(c0, m, (#q.0).0[0], &mut c2);
+                });
+                for j in 1..limbs - 1 {
+                    let temp1 = get_temp(j);
+                    gen.extend(quote! {
+                        c0 = ::fff::mac_with_carry(c1 + #temp1, v, (#b.0).0[#j], &mut c1);
+                    });
+                    let temp2 = get_temp(j - 1);
+                    let temp3 = get_temp(limbs - 1);
+                    if j == limbs - 1 {
+                        gen.extend(quote! {
+                            let #temp2 = ::fff::mac_with_carry(c0 + c1 + c2, m, (#q.0).0[#j], &mut #temp3);
+                        });
+                    } else {
+                        gen.extend(quote! {
+                            let #temp2 = ::fff::mac_with_carry(c0 + c2, m, (#q.0).0[#j], &mut c2);
+                        });
+                    }
+                }
+            } else {
+                let temp3 = get_temp(0);
+                gen.extend(quote! {
+                    c0 = ::fff::mac_with_carry(#temp3, v, (#b.0).0[0], &mut c1);
+                    let mut m = c0 * (#q_inverse.0).0[0];
+                    c = ::fff::mac_with_carry(c0, m, (#q.0).0[0], &mut c2);
+                });
+                for j in 1..limbs - 1 {
+                    let temp4 = get_temp(j);
+                    gen.extend(quote! {
+                        c0 = ::fff::mac_with_carry(c1 + #temp4, v, (#b.0).0[#j], &mut c1);
+                    });
+                    let temp1 = get_temp(j - 1);
+                    if j == limbs - 1 {
+                        let temp0 = get_temp(limbs - 1);
+                        gen.extend(quote! {
+                            #temp1 = ::fff::mac_with_carry(c0 + c1 + c2, m, (#q.0).0[#j], &mut #temp0);
+                        });
+                    } else {
+                        gen.extend(quote! {
+                            #temp1 = ::fff::mac_with_carry(c0 + c2, m, (#q.0).0[#j], &mut c2);
+                        });
+                    }
+                }
+            }
         }
-
-        let mut mont_calling = proc_macro2::TokenStream::new();
-        mont_calling.append_separated(
-            (0..(limbs * 2)).map(|i| get_temp(i)),
-            proc_macro2::Punct::new(',', proc_macro2::Spacing::Alone),
-        );
-
-        gen.extend(quote! {
-            self.mont_reduce(#mont_calling);
-        });
 
         gen
     }
@@ -287,7 +362,14 @@ pub fn prime_field_impl(
         limbs: usize,
     ) -> proc_macro2::TokenStream {
         let mut gen = proc_macro2::TokenStream::new();
-        let temp = get_temp(limbs + 1);
+
+        let _r: BigInt = BigInt::from(1 << (limbs * 64));
+        let mut _r_inv: BigInt = BigInt::from(1);
+        let mut _q_inv: BigInt = BigInt::from(0);
+        extended_euclidean_algo(&_r, &modulus.to_bigint().unwrap(), &mut _r_inv, &mut _q_inv);
+        _q_inv = _q_inv % _r;
+        let q_inverse = biguint_to_u64_vec(_q_inv.to_biguint().unwrap(), limbs);
+        let q = biguint_to_u64_vec(modulus.to_biguint().unwrap(), limbs);
 
         for i in 0..limbs {
             gen.extend(quote! {
@@ -295,54 +377,83 @@ pub fn prime_field_impl(
             });
 
             if i == 0 {
+                let temp0 = get_temp(limbs);
                 gen.extend(quote! {
-                    let (#temp.0).0[0] = ::fff::mac_with_carry(0, (#a.0).0[#i], (#b.0).0[0], &mut carry);
+                    let #temp0 = ::fff::mac_with_carry(0, (#a.0).0[#i], (#b.0).0[0], &mut carry);
                 });
                 for j in 1..limbs {
+                    let tempi = get_temp(limbs + i);
                     gen.extend(quote! {
-                        let (#temp.0).0[#i] = ::fff::mac_with_carry(0, (#a.0).0[#i], (#b.0).0[#j], &mut carry);
+                        let #tempi = ::fff::mac_with_carry(0, (#a.0).0[#i], (#b.0).0[#j], &mut carry);
                     });
                 }
             } else {
+                let temp0 = get_temp(limbs);
                 gen.extend(quote! {
-                carry = (#temp.0).0[0];
-                    let (#temp.0).0[0] = ::fff::mac_with_carry(0, (#a.0).0[#i], (#b.0).0[0], &mut carry);
+                    carry = #temp0;
+                    #temp0 = ::fff::mac_with_carry(0, (#a.0).0[#i], (#b.0).0[0], &mut carry);
                 });
                 for j in 1..limbs {
+                    let tempj = get_temp(limbs + j);
                     gen.extend(quote! {
-                        let (#temp.0).0[#j] = ::fff::mac_with_carry((#temp.0).0[#j], (#a.0).0[#i], (#b.0).0[#j], &mut carry);
+                        #tempj = ::fff::mac_with_carry(#tempj, (#a.0).0[#i], (#b.0).0[#j], &mut carry);
                     });
                 }
             }
 
-            let _r: BigInt = BigInt::from(1 << (limbs * 64));
-            let mut _r_inv: BigInt = BigInt::from(1);
-            let mut _q_inv: BigInt = BigInt::from(0);
-            extended_euclidean_algo(&_r, &modulus.to_bigint().unwrap(), &mut _r_inv, &mut _q_inv);
-            _q_inv = _q_inv % _r;
-            let q_inverse = biguint_to_u64_vec(_q_inv.to_biguint().unwrap(), limbs);
-            let q = biguint_to_u64_vec(modulus.to_biguint().unwrap(), limbs);
-
+            let temp0 = get_temp(0 + limbs);
             gen.extend(quote! {
                 let mut d = carry;
-                let mut m = ::fff::mac_with_carry(0, (#temp.0).0[0], (#q_inverse.0).0[0], &mut carry);
-                carry = ::fff::mac_with_carry((#temp.0).0[0], m, (#q.0).0[0], carry);
+                let mut m = ::fff::mac_with_carry(0, #temp0, (#q_inverse.0).0[0], &mut carry);
+                carry = ::fff::mac_with_carry(#temp0, m, (#q.0).0[0], carry);
             });
             for j in 1..limbs {
+                let tempjm = get_temp(limbs + j - 1);
+                let templ = get_temp(limbs + limbs);
+                let tempj = get_temp(limbs + j);
                 if j == limbs - 1 {
                     gen.extend(quote! {
-                        carry = ::fff::adc(carry, (#temp.0).0[#limbs])
-                        let (#temp.0).0[#j - 1] = ::fff::mac_with_carry((#temp.0).0[#j], m, (#q.0).0[#j], &mut carry);
+                        carry = ::fff::adc(carry, #templ);
+                        #tempjm = ::fff::mac_with_carry(#tempj, m, (#q.0).0[#j], &mut carry);
                     });
                 } else {
                     gen.extend(quote! {
-                        let (#temp.0).0[#j - 1] = ::fff::mac_with_carry((#temp.0).0[#j], m, (#q.0).0[#j], &mut carry);
+                        #tempjm = ::fff::mac_with_carry(#tempj, m, (#q.0).0[#j], &mut carry);
                     });
                 }
                 gen.extend(quote! {
-                    let (#temp.0).0[#limbs - 1] = ::fff::adc_no_carry(d, carry, &mut carry);
-                    let (#temp.0).0[#limbs] = ::fff::adc_no_carry(d, carry, &mut carry);
+                    #tempjm = ::fff::adc(d, carry, &mut #templ);
                 });
+            }
+        }
+
+        let mut tlst = 0;
+
+        let templ = get_temp(limbs + limbs);
+        gen.extend(quote! {
+            #tlst = #templ;
+        });
+
+        if tlst != 0 {
+            let mut b = 0;
+
+            let temp0 = get_temp(limbs);
+            let res0 = get_temp(0);
+            gen.extend(quote! {
+                let #res0 = ::fff::sbb_no_borrow(#temp0, (#q.0).0[0], &mut #b);
+            });
+            for i in 1..limbs {
+                let resi = get_temp(i);
+                let tempi = get_temp(limbs + i);
+                if i == limbs - 1 {
+                    gen.extend(quote! {
+                        let #resi = ::fff::sbb_no_borrow(#tempi, (#q.0).0[#i], &mut #b);
+                    });
+                } else {
+                    gen.extend(quote! {
+                        let #resi = ::fff::sbb(#tempi, (#q.0).0[#i], &mut #b);
+                    });
+                }
             }
         }
 
