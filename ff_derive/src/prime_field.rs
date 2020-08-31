@@ -447,7 +447,7 @@ pub fn prime_field_impl(
         });
 
         if tlst != 0 {
-            let mut b = 0;
+            let b = 0;
 
             let temp0 = get_temp(limbs);
             let res0 = get_temp(0);
