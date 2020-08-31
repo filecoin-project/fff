@@ -252,6 +252,9 @@ pub fn prime_field_impl(
         }
     }
 
+    /*
+        Explicitly ported from https://github.com/ConsenSys/goff/blob/master/internal/templates/element/mul_nocarry.go
+     */
     fn mul_impl_no_carry(
         a: proc_macro2::TokenStream,
         b: proc_macro2::TokenStream,
@@ -367,6 +370,11 @@ pub fn prime_field_impl(
         gen
     }
 
+    /*
+        Explicitly ported implementation from https://github.com/ConsenSys/goff/blob/master/internal/templates/element/mul_cios.go.
+        It is suggested that current implementation is pretty much the same in
+        terms of performance.
+     */
     fn mul_impl_cios(
         a: proc_macro2::TokenStream,
         b: proc_macro2::TokenStream,
