@@ -346,11 +346,11 @@ pub fn prime_field_impl(
                     if j == limbs - 1 {
                         let temp0 = get_temp(limbs - 1);
                         gen.extend(quote! {
-                            #temp1 = ::fff::mac_with_carry(c0 + c1 + c2, m, (#q.0).0[#j], &mut #temp0);
+                            let #temp1 = ::fff::mac_with_carry(c0 + c1 + c2, m, (#q.0).0[#j], &mut #temp0);
                         });
                     } else {
                         gen.extend(quote! {
-                            #temp1 = ::fff::mac_with_carry(c0 + c2, m, (#q.0).0[#j], &mut c2);
+                            let #temp1 = ::fff::mac_with_carry(c0 + c2, m, (#q.0).0[#j], &mut c2);
                         });
                     }
                 }
@@ -411,12 +411,12 @@ pub fn prime_field_impl(
                 let temp0 = get_temp(limbs);
                 gen.extend(quote! {
                     carry = #temp0;
-                    #temp0 = ::fff::mac_with_carry(0, (#a.0).0[#i], (#b.0).0[0], &mut carry);
+                    let #temp0 = ::fff::mac_with_carry(0, (#a.0).0[#i], (#b.0).0[0], &mut carry);
                 });
                 for j in 1..limbs {
                     let tempj = get_temp(limbs + j);
                     gen.extend(quote! {
-                        #tempj = ::fff::mac_with_carry(#tempj, (#a.0).0[#i], (#b.0).0[#j], &mut carry);
+                        let #tempj = ::fff::mac_with_carry(#tempj, (#a.0).0[#i], (#b.0).0[#j], &mut carry);
                     });
                 }
             }
@@ -434,15 +434,15 @@ pub fn prime_field_impl(
                 if j == limbs - 1 {
                     gen.extend(quote! {
                         carry = ::fff::adc(carry, #templ);
-                        #tempjm = ::fff::mac_with_carry(#tempj, m, (#q.0).0[#j], &mut carry);
+                        let #tempjm = ::fff::mac_with_carry(#tempj, m, (#q.0).0[#j], &mut carry);
                     });
                 } else {
                     gen.extend(quote! {
-                        #tempjm = ::fff::mac_with_carry(#tempj, m, (#q.0).0[#j], &mut carry);
+                        let #tempjm = ::fff::mac_with_carry(#tempj, m, (#q.0).0[#j], &mut carry);
                     });
                 }
                 gen.extend(quote! {
-                    #tempjm = ::fff::adc(d, carry, &mut #templ);
+                    let #tempjm = ::fff::adc(d, carry, &mut #templ);
                 });
             }
         }
