@@ -17,8 +17,8 @@ rand_core = "0.5"
 lazy_static = "1.4.0"
 
 [features]
-default = []
 derive = ["fff_derive"]
+default = ["derive"]
 
 [badges]
 maintenance = { status = "actively-developed" }
