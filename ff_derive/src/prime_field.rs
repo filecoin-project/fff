@@ -243,9 +243,9 @@ pub fn prime_field_impl(
     ) -> proc_macro2::TokenStream {
         if limbs == 4 && modulus_raw == BLS_381_FR_MODULUS && cfg!(target_arch = "x86_64") {
             mul_impl_asm4(a, b)
-        } else if limbs <= 12 && biguint_to_real_u64_vec(BigUint::from_str(modulus_raw).unwrap(),
-                                                         limbs)[limbs - 1] <= (!0 as u64 >> 1) - 1 {
-            mul_impl_no_carry(a, b, &BigUint::from_str(modulus_raw).unwrap(), limbs)
+        // } else if limbs <= 12 && biguint_to_real_u64_vec(BigUint::from_str(modulus_raw).unwrap(),
+        //                                                  limbs)[limbs - 1] <= (!0 as u64 >> 1) - 1 {
+        //     mul_impl_no_carry(a, b, &BigUint::from_str(modulus_raw).unwrap(), limbs)
         } else {
             mul_impl_cios(a, b, &BigUint::from_str(modulus_raw).unwrap(), limbs)
             // mul_impl_default(a, b, limbs)
