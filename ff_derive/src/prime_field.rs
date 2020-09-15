@@ -247,8 +247,8 @@ pub fn prime_field_impl(
                                                          limbs)[limbs - 1] <= (!0 as u64 >> 1) - 1 {
             mul_impl_no_carry(a, b, &BigUint::from_str(modulus_raw).unwrap(), limbs)
         } else {
-            // mul_impl_cios(a, b, &BigUint::from_str(modulus_raw).unwrap(), limbs)
-            mul_impl_default(a, b, limbs)
+            mul_impl_cios(a, b, &BigUint::from_str(modulus_raw).unwrap(), limbs)
+            // mul_impl_default(a, b, limbs)
         }
     }
 
@@ -279,6 +279,13 @@ pub fn prime_field_impl(
         });
 
         for i in 0..limbs {
+            let tempi = get_temp(i);
+            gen.extend(quote! {
+                let mut #tempi = 0;
+            });
+        }
+
+        for i in 0..limbs {
             gen.extend(quote! {
                 let mut v = (#a.0).0[#i];
             });
@@ -296,13 +303,13 @@ pub fn prime_field_impl(
                     let temp1 = get_temp(limbs - 1);
                     if j == limbs - 1 {
                         gen.extend(quote! {
-                            let #temp1 = 0;
-                            let #temp0 = ::fff::mac_with_carry(c0 + c1 + c2, m, (#q.0).0[#j], &mut #temp1);
+                            #temp1 = 0;
+                            #temp0 = ::fff::mac_with_carry(c0 + c1 + c2, m, (#q.0).0[#j], &mut #temp1);
                         });
                     } else {
                         gen.extend(quote! {
-                            let #temp1 = 0;
-                            let #temp0 = ::fff::mac_with_carry(c0 + c2, m, (#q.0).0[#j], &mut c2);
+                            #temp1 = 0;
+                            #temp0 = ::fff::mac_with_carry(c0 + c2, m, (#q.0).0[#j], &mut c2);
                         });
                     }
                 }
@@ -322,11 +329,11 @@ pub fn prime_field_impl(
                     let temp3 = get_temp(limbs - 1);
                     if j == limbs - 1 {
                         gen.extend(quote! {
-                            let #temp2 = ::fff::mac_with_carry(c0 + c1 + c2, m, (#q.0).0[#j], &mut #temp3);
+                            #temp2 = ::fff::mac_with_carry(c0 + c1 + c2, m, (#q.0).0[#j], &mut #temp3);
                         });
                     } else {
                         gen.extend(quote! {
-                            let #temp2 = ::fff::mac_with_carry(c0 + c2, m, (#q.0).0[#j], &mut c2);
+                            #temp2 = ::fff::mac_with_carry(c0 + c2, m, (#q.0).0[#j], &mut c2);
                         });
                     }
                 }
@@ -346,11 +353,11 @@ pub fn prime_field_impl(
                     if j == limbs - 1 {
                         let temp0 = get_temp(limbs - 1);
                         gen.extend(quote! {
-                            let #temp1 = ::fff::mac_with_carry(c0 + c1 + c2, m, (#q.0).0[#j], &mut #temp0);
+                            #temp1 = ::fff::mac_with_carry(c0 + c1 + c2, m, (#q.0).0[#j], &mut #temp0);
                         });
                     } else {
                         gen.extend(quote! {
-                            let #temp1 = ::fff::mac_with_carry(c0 + c2, m, (#q.0).0[#j], &mut c2);
+                            #temp1 = ::fff::mac_with_carry(c0 + c2, m, (#q.0).0[#j], &mut c2);
                         });
                     }
                 }
@@ -375,120 +382,134 @@ pub fn prime_field_impl(
         It is suggested that current implementation is pretty much the same in
         terms of performance.
      */
-    // fn mul_impl_cios(
-    //     a: proc_macro2::TokenStream,
-    //     b: proc_macro2::TokenStream,
-    //     modulus: &BigUint,
-    //     limbs: usize,
-    // ) -> proc_macro2::TokenStream {
-    //     let mut gen = proc_macro2::TokenStream::new();
-    //
-    //     let _r: BigInt = BigInt::from(1 << (limbs * 64));
-    //     let mut _r_inv: BigInt = BigInt::from(1);
-    //     let mut _q_inv: BigInt = BigInt::from(0);
-    //     extended_euclidean_algo(&_r, &modulus.to_bigint().unwrap(), &mut _r_inv, &mut _q_inv);
-    //     _q_inv = _q_inv % _r;
-    //     let q_inverse = biguint_to_u64_vec(_q_inv.to_biguint().unwrap(), limbs);
-    //     let q = biguint_to_u64_vec(modulus.to_biguint().unwrap(), limbs);
-    //
-    //     for i in 0..limbs {
-    //         gen.extend(quote! {
-    //             let mut carry = 0;
-    //         });
-    //
-    //         if i == 0 {
-    //             let temp0 = get_temp(limbs);
-    //             gen.extend(quote! {
-    //                 let #temp0 = ::fff::mac_with_carry(0, (#a.0).0[#i], (#b.0).0[0], &mut carry);
-    //             });
-    //             for j in 1..limbs {
-    //                 let tempi = get_temp(limbs + i);
-    //                 gen.extend(quote! {
-    //                     let #tempi = ::fff::mac_with_carry(0, (#a.0).0[#i], (#b.0).0[#j], &mut carry);
-    //                 });
-    //             }
-    //         } else {
-    //             let temp0 = get_temp(limbs);
-    //             gen.extend(quote! {
-    //                 carry = #temp0;
-    //                 let #temp0 = ::fff::mac_with_carry(0, (#a.0).0[#i], (#b.0).0[0], &mut carry);
-    //             });
-    //             for j in 1..limbs {
-    //                 let tempj = get_temp(limbs + j);
-    //                 gen.extend(quote! {
-    //                     let #tempj = ::fff::mac_with_carry(#tempj, (#a.0).0[#i], (#b.0).0[#j], &mut carry);
-    //                 });
-    //             }
-    //         }
-    //
-    //         let temp0 = get_temp(0 + limbs);
-    //         gen.extend(quote! {
-    //             let mut d = carry;
-    //             let mut m = ::fff::mac_with_carry(0, #temp0, (#q_inverse.0).0[0], &mut carry);
-    //             carry = ::fff::mac_with_carry(#temp0, m, (#q.0).0[0], carry);
-    //         });
-    //         for j in 1..limbs {
-    //             let tempjm = get_temp(limbs + j - 1);
-    //             let templ = get_temp(limbs + limbs);
-    //             let tempj = get_temp(limbs + j);
-    //             if j == limbs - 1 {
-    //                 gen.extend(quote! {
-    //                     carry = ::fff::adc(carry, #templ);
-    //                     let #tempjm = ::fff::mac_with_carry(#tempj, m, (#q.0).0[#j], &mut carry);
-    //                 });
-    //             } else {
-    //                 gen.extend(quote! {
-    //                     let #tempjm = ::fff::mac_with_carry(#tempj, m, (#q.0).0[#j], &mut carry);
-    //                 });
-    //             }
-    //             gen.extend(quote! {
-    //                 let #tempjm = ::fff::adc(d, carry, &mut #templ);
-    //             });
-    //         }
-    //     }
-    //
-    //     let tlst = 0;
-    //
-    //     let templ = get_temp(limbs + limbs);
-    //     gen.extend(quote! {
-    //         #tlst = #templ;
-    //     });
-    //
-    //     if tlst != 0 {
-    //         let b = 0;
-    //
-    //         let temp0 = get_temp(limbs);
-    //         let res0 = get_temp(0);
-    //         gen.extend(quote! {
-    //             let #res0 = ::fff::sbb_no_borrow(#temp0, (#q.0).0[0], &mut #b);
-    //         });
-    //         for i in 1..limbs {
-    //             let resi = get_temp(i);
-    //             let tempi = get_temp(limbs + i);
-    //             if i == limbs - 1 {
-    //                 gen.extend(quote! {
-    //                     let #resi = ::fff::sbb_no_borrow(#tempi, (#q.0).0[#i], &mut #b);
-    //                 });
-    //             } else {
-    //                 gen.extend(quote! {
-    //                     let #resi = ::fff::sbb(#tempi, (#q.0).0[#i], &mut #b);
-    //                 });
-    //             }
-    //         }
-    //     }
-    //
-    //     let mut mont_calling = proc_macro2::TokenStream::new();
-    //     mont_calling.append_separated(
-    //         (0..(limbs * 2)).map(|i| get_temp(i)),
-    //         proc_macro2::Punct::new(',', proc_macro2::Spacing::Alone),
-    //     );
-    //
-    //     gen.extend(quote! {
-    //         self.mont_reduce(#mont_calling);
-    //     });
-    //
-    //     gen
-    // }
+    fn mul_impl_cios(
+        a: proc_macro2::TokenStream,
+        b: proc_macro2::TokenStream,
+        modulus: &BigUint,
+        limbs: usize,
+    ) -> proc_macro2::TokenStream {
+        let mut gen = proc_macro2::TokenStream::new();
+
+        let _r: BigInt = BigInt::from(1 << (limbs * 64));
+        let mut _r_inv: BigInt = BigInt::from(1);
+        let mut _q_inv: BigInt = BigInt::from(0);
+        extended_euclidean_algo(&_r, &modulus.to_bigint().unwrap(), &mut _r_inv, &mut _q_inv);
+        _q_inv = _q_inv % _r;
+        let q_inverse = biguint_to_u64_vec(_q_inv.to_biguint().unwrap(), limbs);
+        let q = biguint_to_u64_vec(modulus.to_biguint().unwrap(), limbs);
+
+        for i in 0..limbs {
+            let tempi = get_temp(i);
+            gen.extend(quote! {
+                let mut #tempi = 0;
+            });
+        }
+
+        for i in limbs..limbs * 2 {
+            let resi = get_temp(i);
+            gen.extend(quote! {
+                let mut #resi = 0;
+            });
+        }
+
+        for i in 0..limbs {
+            gen.extend(quote! {
+                let mut carry = 0;
+            });
+
+            if i == 0 {
+                let temp0 = get_temp(limbs);
+                gen.extend(quote! {
+                    #temp0 = ::fff::mac_with_carry(0, (#a.0).0[#i], (#b.0).0[0], &mut carry);
+                });
+                for j in 1..limbs {
+                    let tempi = get_temp(limbs + i);
+                    gen.extend(quote! {
+                        #tempi = ::fff::mac_with_carry(0, (#a.0).0[#i], (#b.0).0[#j], &mut carry);
+                    });
+                }
+            } else {
+                let temp0 = get_temp(limbs);
+                gen.extend(quote! {
+                    carry = #temp0;
+                    #temp0 = ::fff::mac_with_carry(0, (#a.0).0[#i], (#b.0).0[0], &mut carry);
+                });
+                for j in 1..limbs {
+                    let tempj = get_temp(limbs + j);
+                    gen.extend(quote! {
+                        #tempj = ::fff::mac_with_carry(#tempj, (#a.0).0[#i], (#b.0).0[#j], &mut carry);
+                    });
+                }
+            }
+
+            let temp0 = get_temp(0 + limbs);
+            gen.extend(quote! {
+                let mut d = carry;
+                let mut m = ::fff::mac_with_carry(0, #temp0, (#q_inverse.0).0[0], &mut carry);
+                carry = ::fff::mac_with_carry(#temp0, m, (#q.0).0[0], carry);
+            });
+            for j in 1..limbs {
+                let tempjm = get_temp(limbs + j - 1);
+                let templ = get_temp(limbs + limbs);
+                let tempj = get_temp(limbs + j);
+                if j == limbs - 1 {
+                    gen.extend(quote! {
+                        carry = ::fff::adc(carry, #templ);
+                        #tempjm = ::fff::mac_with_carry(#tempj, m, (#q.0).0[#j], &mut carry);
+                    });
+                } else {
+                    gen.extend(quote! {
+                        #tempjm = ::fff::mac_with_carry(#tempj, m, (#q.0).0[#j], &mut carry);
+                    });
+                }
+                gen.extend(quote! {
+                    #tempjm = ::fff::adc(d, carry, &mut #templ);
+                });
+            }
+        }
+
+        let tlst = 0;
+
+        let templ = get_temp(limbs + limbs);
+        gen.extend(quote! {
+            #tlst = #templ;
+        });
+
+        if tlst != 0 {
+            let b = 0;
+
+            let temp0 = get_temp(limbs);
+            let res0 = get_temp(0);
+            gen.extend(quote! {
+                #res0 = ::fff::sbb_no_borrow(#temp0, (#q.0).0[0], &mut #b);
+            });
+            for i in 1..limbs {
+                let resi = get_temp(i);
+                let tempi = get_temp(limbs + i);
+                if i == limbs - 1 {
+                    gen.extend(quote! {
+                        #resi = ::fff::sbb_no_borrow(#tempi, (#q.0).0[#i], &mut #b);
+                    });
+                } else {
+                    gen.extend(quote! {
+                        #resi = ::fff::sbb(#tempi, (#q.0).0[#i], &mut #b);
+                    });
+                }
+            }
+        }
+
+        let mut mont_calling = proc_macro2::TokenStream::new();
+        mont_calling.append_separated(
+            (0..(limbs * 2)).map(|i| get_temp(i)),
+            proc_macro2::Punct::new(',', proc_macro2::Spacing::Alone),
+        );
+
+        gen.extend(quote! {
+            self.mont_reduce(#mont_calling);
+        });
+
+        gen
+    }
 
     fn mul_impl_asm4(
         a: proc_macro2::TokenStream,
