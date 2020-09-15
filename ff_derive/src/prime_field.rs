@@ -266,7 +266,7 @@ pub fn prime_field_impl(
     ) -> proc_macro2::TokenStream {
         let mut gen = proc_macro2::TokenStream::new();
 
-        let _r: BigInt = BigInt::from(1 << (limbs * 64));
+        let _r: BigInt = BigInt::from(1).shl((limbs * 64));
         let mut _r_inv: BigInt = BigInt::from(1);
         let mut _q_inv: BigInt = BigInt::from(0);
         extended_euclidean_algo(&_r, &modulus.to_bigint().unwrap(), &mut _r_inv, &mut _q_inv);
@@ -393,7 +393,7 @@ pub fn prime_field_impl(
     ) -> proc_macro2::TokenStream {
         let mut gen = proc_macro2::TokenStream::new();
 
-        let _r: BigInt = BigInt::from(1 << (limbs * 64));
+        let _r: BigInt = BigInt::from(1).shl((limbs * 64));
         let mut _r_inv: BigInt = BigInt::from(1);
         let mut _q_inv: BigInt = BigInt::from(0);
         extended_euclidean_algo(&_r, &modulus.to_bigint().unwrap(), &mut _r_inv, &mut _q_inv);
