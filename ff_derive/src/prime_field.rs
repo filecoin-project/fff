@@ -1,4 +1,4 @@
-use std::ops::{Neg};
+use std::ops::{Neg, Shl};
 use std::str::FromStr;
 
 use num_integer::Integer;
