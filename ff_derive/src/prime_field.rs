@@ -281,7 +281,7 @@ pub fn prime_field_impl(
             let mut c2 = 0;
         });
 
-        for i in 0..limbs {
+        for i in 0..limbs * 2 {
             let tempi = get_temp(i);
             gen.extend(quote! {
                 let mut #tempi = 0;
