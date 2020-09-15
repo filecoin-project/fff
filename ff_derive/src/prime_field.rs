@@ -1,6 +1,7 @@
 use std::ops::{Neg};
 use std::str::FromStr;
 
+use num_integer::Integer;
 use num_bigint::BigInt;
 use num_bigint::BigUint;
 use num_bigint::ToBigInt;
@@ -241,13 +242,15 @@ pub fn prime_field_impl(
         limbs: usize,
         modulus_raw: &str,
     ) -> proc_macro2::TokenStream {
+        let modnum = BigUint::from_str(modulus_raw).unwrap();
+        let modvec = biguint_to_real_u64_vec(BigUint::from_str(modulus_raw).unwrap(), limbs);
+
         if limbs == 4 && modulus_raw == BLS_381_FR_MODULUS && cfg!(target_arch = "x86_64") {
             mul_impl_asm4(a, b)
-        // } else if limbs <= 12 && biguint_to_real_u64_vec(BigUint::from_str(modulus_raw).unwrap(),
-        //                                                  limbs)[limbs - 1] <= (!0 as u64 >> 1) - 1 {
-        //     mul_impl_no_carry(a, b, &BigUint::from_str(modulus_raw).unwrap(), limbs)
+        } else if limbs <= 12 && modvec[limbs - 1] <= (!0 as u64 >> 1) - 1 {
+            mul_impl_no_carry(a, b, &modnum, limbs)
         } else {
-            mul_impl_cios(a, b, &BigUint::from_str(modulus_raw).unwrap(), limbs)
+            mul_impl_cios(a, b, &modnum, limbs)
             // mul_impl_default(a, b, limbs)
         }
     }
@@ -267,9 +270,9 @@ pub fn prime_field_impl(
         let mut _r_inv: BigInt = BigInt::from(1);
         let mut _q_inv: BigInt = BigInt::from(0);
         extended_euclidean_algo(&_r, &modulus.to_bigint().unwrap(), &mut _r_inv, &mut _q_inv);
-        _q_inv = _q_inv % _r;
-        let q_inverse = biguint_to_u64_vec(_q_inv.to_biguint().unwrap(), limbs);
-        let q = biguint_to_u64_vec(modulus.to_biguint().unwrap(), limbs);
+        _q_inv.mod_floor(&_r);
+        let q_inverse: proc_macro2::TokenStream = biguint_to_u64_vec(_q_inv.to_biguint().unwrap(), limbs);
+        let q: proc_macro2::TokenStream = biguint_to_u64_vec(modulus.to_biguint().unwrap(), limbs);
 
         gen.extend(quote! {
             let mut c = 0;
@@ -394,9 +397,9 @@ pub fn prime_field_impl(
         let mut _r_inv: BigInt = BigInt::from(1);
         let mut _q_inv: BigInt = BigInt::from(0);
         extended_euclidean_algo(&_r, &modulus.to_bigint().unwrap(), &mut _r_inv, &mut _q_inv);
-        _q_inv = _q_inv % _r;
-        let q_inverse = biguint_to_u64_vec(_q_inv.to_biguint().unwrap(), limbs);
-        let q = biguint_to_u64_vec(modulus.to_biguint().unwrap(), limbs);
+        _q_inv.mod_floor(&_r);
+        let q_inverse: proc_macro2::TokenStream = biguint_to_u64_vec(_q_inv.to_biguint().unwrap(), limbs);
+        let q: proc_macro2::TokenStream = biguint_to_u64_vec(modulus.to_biguint().unwrap(), limbs);
 
         for i in 0..limbs * 2 {
             let tempi = get_temp(i);
