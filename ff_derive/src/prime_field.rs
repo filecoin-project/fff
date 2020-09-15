@@ -247,8 +247,8 @@ pub fn prime_field_impl(
                                                          limbs)[limbs - 1] <= (!0 as u64 >> 1) - 1 {
             mul_impl_no_carry(a, b, &BigUint::from_str(modulus_raw).unwrap(), limbs)
         } else {
-            mul_impl_cios(a, b, &BigUint::from_str(modulus_raw).unwrap(), limbs)
-            // mul_impl_default(a, b, limbs)
+            // mul_impl_cios(a, b, &BigUint::from_str(modulus_raw).unwrap(), limbs)
+            mul_impl_default(a, b, limbs)
         }
     }
 
