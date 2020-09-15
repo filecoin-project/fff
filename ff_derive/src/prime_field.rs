@@ -469,23 +469,23 @@ pub fn prime_field_impl(
         });
 
         if tlst != 0 {
-            let b = 0;
+            let borrow = 0;
 
             let temp0 = get_temp(limbs);
             let res0 = get_temp(0);
             gen.extend(quote! {
-                #res0 = ::fff::sbb_no_borrow(#temp0, (#q.0).0[0], &mut #b);
+                #res0 = ::fff::sbb_no_borrow(#temp0, (#q.0).0[0], &mut #borrow);
             });
             for i in 1..limbs {
                 let resi = get_temp(i);
                 let tempi = get_temp(limbs + i);
                 if i == limbs - 1 {
                     gen.extend(quote! {
-                        #resi = ::fff::sbb_no_borrow(#tempi, (#q.0).0[#i], &mut #b);
+                        #resi = ::fff::sbb_no_borrow(#tempi, (#q.0).0[#i], &mut #borrow);
                     });
                 } else {
                     gen.extend(quote! {
-                        #resi = ::fff::sbb(#tempi, (#q.0).0[#i], &mut #b);
+                        #resi = ::fff::sbb(#tempi, (#q.0).0[#i], &mut #borrow);
                     });
                 }
             }
