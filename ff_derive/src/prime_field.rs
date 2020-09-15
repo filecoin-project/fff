@@ -366,7 +366,7 @@ pub fn prime_field_impl(
 
         let mut mont_calling = proc_macro2::TokenStream::new();
         mont_calling.append_separated(
-            (0..(limbs * 2)).map(|i| get_temp(i)),
+            (0..(limbs)).map(|i| get_temp(i)),
             proc_macro2::Punct::new(',', proc_macro2::Spacing::Alone),
         );
 
@@ -398,17 +398,10 @@ pub fn prime_field_impl(
         let q_inverse = biguint_to_u64_vec(_q_inv.to_biguint().unwrap(), limbs);
         let q = biguint_to_u64_vec(modulus.to_biguint().unwrap(), limbs);
 
-        for i in 0..limbs {
+        for i in 0..limbs * 2 {
             let tempi = get_temp(i);
             gen.extend(quote! {
                 let mut #tempi = 0;
-            });
-        }
-
-        for i in limbs..limbs * 2 {
-            let resi = get_temp(i);
-            gen.extend(quote! {
-                let mut #resi = 0;
             });
         }
 
