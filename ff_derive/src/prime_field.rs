@@ -8,6 +8,7 @@ use num_bigint::ToBigInt;
 use quote::TokenStreamExt;
 
 use crate::util::*;
+use num_traits::Signed;
 
 const BLS_381_FR_MODULUS: &str =
     "52435875175126190479447740508185965837690552500527637822603658699938581184513";
@@ -270,7 +271,7 @@ pub fn prime_field_impl(
         let mut _q_inv: BigInt = BigInt::from(0);
         extended_euclidean_algo(&_r, &modulus.to_bigint().unwrap(), &mut _r_inv, &mut _q_inv);
         _q_inv.mod_floor(&_r);
-        let q_inverse: proc_macro2::TokenStream = biguint_to_u64_vec(_q_inv.to_biguint().unwrap(), limbs);
+        let q_inverse: proc_macro2::TokenStream = biguint_to_u64_vec(_q_inv.abs().to_biguint().unwrap(), limbs);
         let q: proc_macro2::TokenStream = biguint_to_u64_vec(modulus.clone(), limbs);
 
         gen.extend(quote! {
@@ -397,7 +398,7 @@ pub fn prime_field_impl(
         let mut _q_inv: BigInt = BigInt::from(0);
         extended_euclidean_algo(&_r, &modulus.to_bigint().unwrap(), &mut _r_inv, &mut _q_inv);
         _q_inv.mod_floor(&_r);
-        let q_inverse: proc_macro2::TokenStream = biguint_to_u64_vec(_q_inv.to_biguint().unwrap(), limbs);
+        let q_inverse: proc_macro2::TokenStream = biguint_to_u64_vec(_q_inv.abs().to_biguint().unwrap(), limbs);
         let q: proc_macro2::TokenStream = biguint_to_u64_vec(modulus.clone(), limbs);
 
         for i in 0..limbs * 2 {
