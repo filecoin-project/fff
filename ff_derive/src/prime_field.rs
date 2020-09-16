@@ -5,7 +5,6 @@ use num_integer::Integer;
 use num_bigint::BigInt;
 use num_bigint::BigUint;
 use num_bigint::ToBigInt;
-use num_bigint::ToBigUint;
 use quote::TokenStreamExt;
 
 use crate::util::*;
@@ -24,8 +23,8 @@ pub fn extended_euclidean_algo(r: &BigInt, q: &BigInt, r_inv: &mut BigInt, q_inv
     let mut tmp_muls: BigInt;
     let mut ri_plus_one: BigInt;
     let mut tmp_mult: BigInt;
-    let mut a: BigInt = r.to_bigint().unwrap();
-    let mut b: BigInt = q.to_bigint().unwrap();
+    let mut a: BigInt = r.clone();
+    let mut b: BigInt = q.clone();
 
     *r_inv = 1.into();
     *q_inv = 0.into();
@@ -44,15 +43,15 @@ pub fn extended_euclidean_algo(r: &BigInt, q: &BigInt, r_inv: &mut BigInt, q_inv
         s2 = s1;
         t2 = t1;
 
-        s1 = r_inv.to_bigint().unwrap() - &tmp_muls;
-        t1 = q_inv.to_bigint().unwrap() - &tmp_mult;
+        s1 = r_inv.clone() - &tmp_muls;
+        t1 = q_inv.clone() - &tmp_mult;
         *r_inv = s2;
         *q_inv = t2;
 
         a = b;
         b = ri_plus_one;
     }
-    *q_inv = q_inv.to_bigint().unwrap().neg();
+    *q_inv = q_inv.clone().neg();
 }
 
 /// Implement PrimeField for the derived type.
@@ -266,13 +265,13 @@ pub fn prime_field_impl(
     ) -> proc_macro2::TokenStream {
         let mut gen = proc_macro2::TokenStream::new();
 
-        let _r: BigInt = BigInt::from(1).shl((limbs * 64));
+        let _r: BigInt = BigInt::from(1).shl(limbs * 64);
         let mut _r_inv: BigInt = BigInt::from(1);
         let mut _q_inv: BigInt = BigInt::from(0);
         extended_euclidean_algo(&_r, &modulus.to_bigint().unwrap(), &mut _r_inv, &mut _q_inv);
         _q_inv.mod_floor(&_r);
         let q_inverse: proc_macro2::TokenStream = biguint_to_u64_vec(_q_inv.to_biguint().unwrap(), limbs);
-        let q: proc_macro2::TokenStream = biguint_to_u64_vec(modulus.to_biguint().unwrap(), limbs);
+        let q: proc_macro2::TokenStream = biguint_to_u64_vec(modulus.clone(), limbs);
 
         gen.extend(quote! {
             let mut c = 0;
@@ -393,13 +392,13 @@ pub fn prime_field_impl(
     ) -> proc_macro2::TokenStream {
         let mut gen = proc_macro2::TokenStream::new();
 
-        let _r: BigInt = BigInt::from(1).shl((limbs * 64));
+        let _r: BigInt = BigInt::from(1).shl(limbs * 64);
         let mut _r_inv: BigInt = BigInt::from(1);
         let mut _q_inv: BigInt = BigInt::from(0);
         extended_euclidean_algo(&_r, &modulus.to_bigint().unwrap(), &mut _r_inv, &mut _q_inv);
         _q_inv.mod_floor(&_r);
         let q_inverse: proc_macro2::TokenStream = biguint_to_u64_vec(_q_inv.to_biguint().unwrap(), limbs);
-        let q: proc_macro2::TokenStream = biguint_to_u64_vec(modulus.to_biguint().unwrap(), limbs);
+        let q: proc_macro2::TokenStream = biguint_to_u64_vec(modulus.clone(), limbs);
 
         for i in 0..limbs * 2 {
             let tempi = get_temp(i);
