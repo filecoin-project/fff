@@ -1,59 +1,9 @@
-use std::ops::{Neg, Shl};
-use std::str::FromStr;
-
-use num_integer::Integer;
-use num_bigint::BigInt;
-use num_bigint::BigUint;
-use num_bigint::ToBigInt;
 use quote::TokenStreamExt;
 
-use crate::util::*;
-use num_traits::Signed;
+use crate::prime_field;
 
-const BLS_381_FR_MODULUS: &str =
+pub const BLS_381_FR_MODULUS: &str =
     "52435875175126190479447740508185965837690552500527637822603658699938581184513";
-
-// https://en.wikipedia.org/wiki/Extended_Euclidean_algorithm
-// r > q, modifies rinv and qinv such that rinv.r - qinv.q = 1
-pub fn extended_euclidean_algo(r: &BigInt, q: &BigInt, r_inv: &mut BigInt, q_inv: &mut BigInt) {
-    let mut s1: BigInt = 0.into();
-    let mut s2: BigInt;
-    let mut t1: BigInt = 1.into();
-    let mut t2: BigInt;
-    let mut qi: BigInt;
-    let mut tmp_muls: BigInt;
-    let mut ri_plus_one: BigInt;
-    let mut tmp_mult: BigInt;
-    let mut a: BigInt = r.clone();
-    let mut b: BigInt = q.clone();
-
-    *r_inv = 1.into();
-    *q_inv = 0.into();
-
-// r_i+1 = r_i-1 - q_i.r_i
-// s_i+1 = s_i-1 - q_i.s_i
-// t_i+1 = t_i-1 - q_i.s_i
-    while b.cmp(&0.into()) == std::cmp::Ordering::Greater
-    {
-        qi = BigInt::from(&a / &b);
-        ri_plus_one = &a % &b;
-
-        tmp_muls = &s1 * &qi;
-        tmp_mult = &t1 * &qi;
-
-        s2 = s1;
-        t2 = t1;
-
-        s1 = r_inv.clone() - &tmp_muls;
-        t1 = q_inv.clone() - &tmp_mult;
-        *r_inv = s2;
-        *q_inv = t2;
-
-        a = b;
-        b = ri_plus_one;
-    }
-    *q_inv = q_inv.clone().neg();
-}
 
 /// Implement PrimeField for the derived type.
 pub fn prime_field_impl(
@@ -61,6 +11,7 @@ pub fn prime_field_impl(
     repr: &syn::Ident,
     limbs: usize,
     modulus_raw: &str,
+    no_carry: bool
 ) -> proc_macro2::TokenStream {
     // Returns r{n} as an ident.
     fn get_temp(n: usize) -> syn::Ident {
@@ -236,21 +187,19 @@ pub fn prime_field_impl(
         gen
     }
 
-    fn mul_impl(
+    pub fn mul_impl(
         a: proc_macro2::TokenStream,
         b: proc_macro2::TokenStream,
         limbs: usize,
         modulus_raw: &str,
+        no_carry: bool,
     ) -> proc_macro2::TokenStream {
-        let modnum = BigUint::from_str(modulus_raw).unwrap();
-        let modvec = biguint_to_real_u64_vec(BigUint::from_str(modulus_raw).unwrap(), limbs);
-
-        if limbs == 4 && modulus_raw == BLS_381_FR_MODULUS && cfg!(target_arch = "x86_64") {
+        if limbs == 4 && modulus_raw == prime_field::BLS_381_FR_MODULUS && cfg!(target_arch = "x86_64") {
             mul_impl_asm4(a, b)
-        } else if limbs <= 12 && modvec[limbs - 1] <= (!0 as u64 >> 1) - 1 {
-            mul_impl_no_carry(a, b, &modnum, limbs)
+        } else if limbs <= 12 && no_carry {
+            mul_impl_no_carry(a, b, limbs)
         } else {
-            mul_impl_cios(a, b, &modnum, limbs)
+            mul_impl_cios(a, b, limbs)
             // mul_impl_default(a, b, limbs)
         }
     }
@@ -261,18 +210,9 @@ pub fn prime_field_impl(
     fn mul_impl_no_carry(
         a: proc_macro2::TokenStream,
         b: proc_macro2::TokenStream,
-        modulus: &BigUint,
         limbs: usize,
     ) -> proc_macro2::TokenStream {
         let mut gen = proc_macro2::TokenStream::new();
-
-        let _r: BigInt = BigInt::from(1).shl(limbs * 64);
-        let mut _r_inv: BigInt = BigInt::from(1);
-        let mut _q_inv: BigInt = BigInt::from(0);
-        extended_euclidean_algo(&_r, &modulus.to_bigint().unwrap(), &mut _r_inv, &mut _q_inv);
-        _q_inv.mod_floor(&_r);
-        let q_inverse: proc_macro2::TokenStream = biguint_to_u64_vec(_q_inv.abs().to_biguint().unwrap(), limbs);
-        let q: proc_macro2::TokenStream = biguint_to_u64_vec(modulus.clone(), limbs);
 
         gen.extend(quote! {
             let mut c = 0;
@@ -295,8 +235,8 @@ pub fn prime_field_impl(
             if i == 0 {
                 gen.extend(quote! {
                     c0 = ::fff::mac_with_carry(0, v, (#b.0).0[0], &mut c1);
-                    let mut m = c0 * #q_inverse[0];
-                    c = ::fff::mac_with_carry(c0, m, #q[0], &mut c2);
+                    let mut m = c0 * Q_INV[0];
+                    c = ::fff::mac_with_carry(c0, m, MODULUS[0], &mut c2);
                 });
                 for j in 1..limbs - 1 {
                     gen.extend(quote! {
@@ -307,12 +247,12 @@ pub fn prime_field_impl(
                     if j == limbs - 1 {
                         gen.extend(quote! {
                             #temp1 = 0;
-                            #temp0 = ::fff::mac_with_carry(c0 + c1 + c2, m, #q[#j], &mut #temp1);
+                            #temp0 = ::fff::mac_with_carry(c0 + c1 + c2, m, MODULUS[#j], &mut #temp1);
                         });
                     } else {
                         gen.extend(quote! {
                             #temp1 = 0;
-                            #temp0 = ::fff::mac_with_carry(c0 + c2, m, #q[#j], &mut c2);
+                            #temp0 = ::fff::mac_with_carry(c0 + c2, m, MODULUS[#j], &mut c2);
                         });
                     }
                 }
@@ -320,8 +260,8 @@ pub fn prime_field_impl(
                 let temp0 = get_temp(0);
                 gen.extend(quote! {
                     c0 = ::fff::mac_with_carry(#temp0, v, (#b.0).0[0], &mut c1);
-                    let mut m = c0 * #q_inverse[0];
-                    c = ::fff::mac_with_carry(c0, m, #q[0], &mut c2);
+                    let mut m = c0 * Q_INV[0];
+                    c = ::fff::mac_with_carry(c0, m, MODULUS[0], &mut c2);
                 });
                 for j in 1..limbs - 1 {
                     let temp1 = get_temp(j);
@@ -332,11 +272,11 @@ pub fn prime_field_impl(
                     let temp3 = get_temp(limbs - 1);
                     if j == limbs - 1 {
                         gen.extend(quote! {
-                            #temp2 = ::fff::mac_with_carry(c0 + c1 + c2, m, #q[#j], &mut #temp3);
+                            #temp2 = ::fff::mac_with_carry(c0 + c1 + c2, m, MODULUS[#j], &mut #temp3);
                         });
                     } else {
                         gen.extend(quote! {
-                            #temp2 = ::fff::mac_with_carry(c0 + c2, m, #q[#j], &mut c2);
+                            #temp2 = ::fff::mac_with_carry(c0 + c2, m, MODULUS[#j], &mut c2);
                         });
                     }
                 }
@@ -344,8 +284,8 @@ pub fn prime_field_impl(
                 let temp3 = get_temp(0);
                 gen.extend(quote! {
                     c0 = ::fff::mac_with_carry(#temp3, v, (#b.0).0[0], &mut c1);
-                    let mut m = c0 * #q_inverse[0];
-                    c = ::fff::mac_with_carry(c0, m, #q[0], &mut c2);
+                    let mut m = c0 * Q_INV[0];
+                    c = ::fff::mac_with_carry(c0, m, MODULUS[0], &mut c2);
                 });
                 for j in 1..limbs - 1 {
                     let temp4 = get_temp(j);
@@ -356,11 +296,11 @@ pub fn prime_field_impl(
                     if j == limbs - 1 {
                         let temp0 = get_temp(limbs - 1);
                         gen.extend(quote! {
-                            #temp1 = ::fff::mac_with_carry(c0 + c1 + c2, m, #q[#j], &mut #temp0);
+                            #temp1 = ::fff::mac_with_carry(c0 + c1 + c2, m, MODULUS[#j], &mut #temp0);
                         });
                     } else {
                         gen.extend(quote! {
-                            #temp1 = ::fff::mac_with_carry(c0 + c2, m, #q[#j], &mut c2);
+                            #temp1 = ::fff::mac_with_carry(c0 + c2, m, MODULUS[#j], &mut c2);
                         });
                     }
                 }
@@ -388,18 +328,9 @@ pub fn prime_field_impl(
     fn mul_impl_cios(
         a: proc_macro2::TokenStream,
         b: proc_macro2::TokenStream,
-        modulus: &BigUint,
         limbs: usize,
     ) -> proc_macro2::TokenStream {
         let mut gen = proc_macro2::TokenStream::new();
-
-        let _r: BigInt = BigInt::from(1).shl(limbs * 64);
-        let mut _r_inv: BigInt = BigInt::from(1);
-        let mut _q_inv: BigInt = BigInt::from(0);
-        extended_euclidean_algo(&_r, &modulus.to_bigint().unwrap(), &mut _r_inv, &mut _q_inv);
-        _q_inv.mod_floor(&_r);
-        let q_inverse: proc_macro2::TokenStream = biguint_to_u64_vec(_q_inv.abs().to_biguint().unwrap(), limbs);
-        let q: proc_macro2::TokenStream = biguint_to_u64_vec(modulus.clone(), limbs);
 
         for i in 0..limbs * 2 {
             let tempi = get_temp(i);
@@ -441,8 +372,8 @@ pub fn prime_field_impl(
             let temp0 = get_temp(0 + limbs);
             gen.extend(quote! {
                 let mut d = carry;
-                let mut m = ::fff::mac_with_carry(0, #temp0, #q_inverse[0], &mut carry);
-                carry = ::fff::mac_with_carry(#temp0, m, #q[0], carry);
+                let mut m = ::fff::mac_with_carry(0, #temp0, Q_INV[0], &mut carry);
+                carry = ::fff::mac_with_carry(#temp0, m, MODULUS[0], carry);
             });
             for j in 1..limbs {
                 let tempjm = get_temp(limbs + j - 1);
@@ -451,11 +382,11 @@ pub fn prime_field_impl(
                 if j == limbs - 1 {
                     gen.extend(quote! {
                         carry = ::fff::adc(carry, #templ);
-                        #tempjm = ::fff::mac_with_carry(#tempj, m, #q[#j], &mut carry);
+                        #tempjm = ::fff::mac_with_carry(#tempj, m, MODULUS[#j], &mut carry);
                     });
                 } else {
                     gen.extend(quote! {
-                        #tempjm = ::fff::mac_with_carry(#tempj, m, #q[#j], &mut carry);
+                        #tempjm = ::fff::mac_with_carry(#tempj, m, MODULUS[#j], &mut carry);
                     });
                 }
                 gen.extend(quote! {
@@ -477,18 +408,18 @@ pub fn prime_field_impl(
             let temp0 = get_temp(limbs);
             let res0 = get_temp(0);
             gen.extend(quote! {
-                #res0 = ::fff::sbb_no_borrow(#temp0, #q[0], &mut #borrow);
+                #res0 = ::fff::sbb_no_borrow(#temp0, MODULUS[0], &mut #borrow);
             });
             for i in 1..limbs {
                 let resi = get_temp(i);
                 let tempi = get_temp(limbs + i);
                 if i == limbs - 1 {
                     gen.extend(quote! {
-                        #resi = ::fff::sbb_no_borrow(#tempi, #q[#i], &mut #borrow);
+                        #resi = ::fff::sbb_no_borrow(#tempi, MODULUS[#i], &mut #borrow);
                     });
                 } else {
                     gen.extend(quote! {
-                        #resi = ::fff::sbb(#tempi, #q[#i], &mut #borrow);
+                        #resi = ::fff::sbb(#tempi, MODULUS[#i], &mut #borrow);
                     });
                 }
             }
@@ -574,7 +505,7 @@ pub fn prime_field_impl(
     }
 
     let squaring_impl = sqr_impl(quote! {self}, limbs);
-    let multiply_impl = mul_impl(quote! {self}, quote! {other}, limbs, modulus_raw);
+    let multiply_impl = mul_impl(quote! {self}, quote! {other}, limbs, modulus_raw, no_carry);
     let montgomery_impl = mont_impl(limbs);
     let is_valid_impl = valid_impl(limbs);
 

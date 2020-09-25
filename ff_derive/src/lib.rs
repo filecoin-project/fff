@@ -3,11 +3,9 @@
 #[macro_use]
 extern crate quote;
 
-use std::str::FromStr;
-
-use num_bigint::BigUint;
+use num_bigint::{BigUint};
 use num_integer::Integer;
-use num_traits::One;
+use num_traits::{One};
 
 mod constants;
 mod prime_field;
@@ -61,15 +59,19 @@ pub fn prime_field(input: proc_macro::TokenStream) -> proc_macro::TokenStream {
 
     // modulus - 1 = 2^s * t
     let mut s: u32 = 0;
-    let mut t = &modulus - BigUint::from_str("1").unwrap();
+    let mut t = &modulus - BigUint::one();
     while t.is_even() {
         t = t >> 1;
         s += 1;
     }
 
+
     let sqrt_impl = crate::sqrt::sqrt_impl(&ast.ident, &repr_ident, &modulus, limbs, &r, &t);
+
+    let modvec = biguint_to_real_u64_vec(modulus.clone(), limbs);
+    let no_carry = modvec[limbs - 1] <= (!0 as u64 >> 1) - 1;
     let constants_impl =
-        crate::constants::constants_impl(&repr_ident, limbs, &modulus, &r, s, &t, generator);
+        crate::constants::constants_impl(&repr_ident, limbs, &modulus, &r, s, &t, generator, &modvec);
 
     gen.extend(constants_impl);
     gen.extend(prime_field_repr_impl(&repr_ident, limbs));
@@ -78,6 +80,7 @@ pub fn prime_field(input: proc_macro::TokenStream) -> proc_macro::TokenStream {
         &repr_ident,
         limbs,
         &modulus_raw,
+        no_carry,
     ));
     gen.extend(sqrt_impl);
 
