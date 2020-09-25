@@ -83,7 +83,7 @@ pub fn constants_impl(
 
     let r = biguint_to_u64_vec(r.clone(), limbs);
 
-    let q_inverse = biguint_to_u64_vec(_q_inv.abs().to_biguint().unwrap(), limbs);
+    let q_inverse = biguint_to_real_u64_vec(_q_inv.abs().to_biguint().unwrap(), limbs);
 
     // Compute -m^-1 mod 2**64 by exponentiating by totient(2**64) - 1
     let mut inv = 1u64;
@@ -113,7 +113,7 @@ pub fn constants_impl(
         /// -(m^{-1} mod m) mod m
         const INV: u64 = #inv;
 
-        const Q_INV: #repr = #repr(#q_inverse);
+        const Q_INV: #repr = #repr([#(#q_inverse,)*]);
 
         /// Multiplicative generator of `MODULUS` - 1 order, also quadratic
         /// nonresidue.
