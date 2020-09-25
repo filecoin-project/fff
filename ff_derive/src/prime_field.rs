@@ -260,7 +260,7 @@ pub fn prime_field_impl(
                 let temp0 = get_temp(0);
                 gen.extend(quote! {
                     c0 = ::fff::mac_with_carry(#temp0, v, (#b.0).0[0], &mut c1);
-                    let mut m = c0 * Q_INV[0];
+                    let mut m = c0 * Q_INV.0[0];
                     c = ::fff::mac_with_carry(c0, m, MODULUS.0[0], &mut c2);
                 });
                 for j in 1..limbs - 1 {
