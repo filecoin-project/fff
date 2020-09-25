@@ -196,8 +196,8 @@ pub fn prime_field_impl(
     ) -> proc_macro2::TokenStream {
         if limbs == 4 && modulus_raw == prime_field::BLS_381_FR_MODULUS && cfg!(target_arch = "x86_64") {
             mul_impl_asm4(a, b)
-        } else if limbs <= 12 && no_carry {
-            mul_impl_no_carry(a, b, limbs)
+        //} else if limbs <= 12 && no_carry {
+//            mul_impl_no_carry(a, b, limbs)
         } else {
             // mul_impl_cios(a, b, limbs)
             mul_impl_default(a, b, limbs)
