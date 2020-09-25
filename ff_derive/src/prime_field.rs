@@ -199,8 +199,8 @@ pub fn prime_field_impl(
         } else if limbs <= 12 && no_carry {
             mul_impl_no_carry(a, b, limbs)
         } else {
-            mul_impl_cios(a, b, limbs)
-            // mul_impl_default(a, b, limbs)
+            // mul_impl_cios(a, b, limbs)
+            mul_impl_default(a, b, limbs)
         }
     }
 
