@@ -416,4 +416,37 @@ mod arith_impl {
 
         tmp as u64
     }
+
+    /// Calculate a + (b * c), returning the least significant digit
+    /// and setting carry to the most significant digit.
+    #[inline(always)]
+    pub fn mac_with_carry_simple(a: u64, b: u64, c: u64, carry: &mut u64) -> u64 {
+        let tmp = u128::from(a) + u128::from(b) * u128::from(c);
+
+        *carry = (tmp >> 64) as u64;
+
+        tmp as u64
+    }
+    /// Calculate a + (b * c) + d, returning the least significant digit
+    /// and setting carry to the most significant digit.
+    #[inline(always)]
+    pub fn mac_with_carry_d(a: u64, b: u64, c: u64, d:u64, carry: &mut u64) -> u64 {
+
+        let tmp = u128::from(a) + u128::from(b) * u128::from(c) + u128::from(d);
+
+        *carry = (tmp >> 64) as u64;
+
+        tmp as u64
+    }
+    /// Calculate a + (b * c) + d, returning the least significant digit
+    /// and setting carry to the sum of most significant digit and e.
+    #[inline(always)]
+    pub fn mac_with_carry_e(a: u64, b: u64, c: u64, d: u64, e: u64, carry: &mut u64) -> u64 {
+
+        let tmp = u128::from(a) + u128::from(b) * u128::from(c) + u128::from(d);
+
+        *carry = ((tmp >> 64) as u64) + e;
+
+        tmp as u64
+    }
 }
