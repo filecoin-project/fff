@@ -11,7 +11,7 @@ pub fn prime_field_impl(
     repr: &syn::Ident,
     limbs: usize,
     modulus_raw: &str,
-    no_carry: bool
+    no_carry: bool,
 ) -> proc_macro2::TokenStream {
     // Returns r{n} as an ident.
     fn get_temp(n: usize) -> syn::Ident {
@@ -196,13 +196,11 @@ pub fn prime_field_impl(
     ) -> proc_macro2::TokenStream {
         if limbs == 4 && modulus_raw == prime_field::BLS_381_FR_MODULUS && cfg!(target_arch = "x86_64") {
             mul_impl_asm4(a, b)
-         //} else 
-        //if limbs < 12 && no_carry {
-           // mul_impl_no_carry(a, b, limbs)
+        } else if limbs < 12 && no_carry {
+            mul_impl_no_carry(a, b, limbs)
         } else {
-           // mul_impl_cios(a, b, limbs)
-            
-            mul_impl_default(a, b, limbs)
+            mul_impl_cios(a, b, limbs)
+            // mul_impl_default(a, b, limbs)
         }
     }
 
@@ -314,7 +312,7 @@ pub fn prime_field_impl(
                 (self.0).0[#i] = #temp;
             });
         }
-        
+
         gen.extend(quote! {
             self.reduce();
         });
@@ -383,7 +381,7 @@ pub fn prime_field_impl(
                     gen.extend(quote! {
                         #tempjm = ::fff::mac_with_carry_e(#tempj, m, MODULUS.0[#j], carry, #templ, &mut carry);
                     });
-                }  else {
+                } else {
                     gen.extend(quote! {
                         #tempjm = ::fff::mac_with_carry_d(#tempj, m, MODULUS.0[#j], carry, &mut carry);
                     });
@@ -396,20 +394,19 @@ pub fn prime_field_impl(
             });
         }
         for i in 0..limbs {
-            let temp = get_temp(i+limbs);
+            let temp = get_temp(i + limbs);
 
             gen.extend(quote! {
                 (self.0).0[#i] = #temp;
             });
         }
-        
+
         gen.extend(quote! {
             self.reduce();
         });
         gen
     }
 
-    
     fn mul_impl_asm4(
         a: proc_macro2::TokenStream,
         b: proc_macro2::TokenStream,
