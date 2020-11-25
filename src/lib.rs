@@ -26,6 +26,9 @@ use std::io::{self, Read, Write};
 pub trait Field:
     Sized + Eq + Copy + Clone + Send + Sync + fmt::Debug + fmt::Display + 'static
 {
+    /// Number of bytes when this type is serialized.
+    const SERIALIZED_BYTES: usize;
+    
     /// Returns an element chosen uniformly at random using a user-provided RNG.
     fn random<R: RngCore>(rng: &mut R) -> Self;
 
@@ -84,6 +87,9 @@ pub trait Field:
 
         res
     }
+
+    fn as_bytes(&self) -> Vec<u8>;
+    fn from_bytes(bytes: &[u8]) -> Option<Self>;
 }
 
 /// This trait represents an element of a field that has a square root operation described for it.

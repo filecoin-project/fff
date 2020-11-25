@@ -1047,6 +1047,8 @@ fn prime_field_impl(
         }
 
         impl ::fff::Field for #name {
+            const SERIALIZED_BYTES: usize = #limbs * 8;
+
             /// Computes a uniformly random element using rejection sampling.
             fn random<R: ::rand_core::RngCore>(rng: &mut R) -> Self {
                 loop {
@@ -1169,6 +1171,34 @@ fn prime_field_impl(
                     }
                 }
             }
+            
+            fn as_bytes(&self) -> Vec<u8> {
+                let mut out = [0u8; Self::SERIALIZED_BYTES];
+                for (limb, chunk) in self.0.0.iter().zip(out.chunks_exact_mut(8)) {
+                    chunk.copy_from_slice(&limb.to_be_bytes());
+                }
+                out.to_vec()
+            }
+            
+            fn from_bytes(bytes: &[u8]) -> Option<Self> {
+                use std::convert::TryInto;
+                
+                if bytes.len() != Self::SERIALIZED_BYTES {
+                    return None;
+                }
+                let mut repr = #repr::default();
+                for (limb, chunk) in repr.0.iter_mut().zip(bytes.chunks_exact(8)) {
+                    *limb = u64::from_be_bytes(chunk.try_into().unwrap());
+                }
+                let res = #name(repr);
+                if res.is_valid() {
+                    return Some(res);
+                }
+                
+                None
+            }
+            
+            
 
             #[inline(always)]
             fn frobenius_map(&mut self, _: usize) {
