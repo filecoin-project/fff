@@ -28,7 +28,7 @@ pub trait Field:
 {
     /// Number of bytes when this type is serialized.
     const SERIALIZED_BYTES: usize;
-    
+
     /// Returns an element chosen uniformly at random using a user-provided RNG.
     fn random<R: RngCore>(rng: &mut R) -> Self;
 
@@ -89,6 +89,7 @@ pub trait Field:
     }
 
     fn as_bytes(&self) -> Vec<u8>;
+    fn from_random_bytes(bytes: &[u8]) -> Option<Self>;
     fn from_bytes(bytes: &[u8]) -> Option<Self>;
 }
 

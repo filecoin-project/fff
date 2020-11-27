@@ -1171,34 +1171,48 @@ fn prime_field_impl(
                     }
                 }
             }
-            
+
             fn as_bytes(&self) -> Vec<u8> {
                 let mut out = [0u8; Self::SERIALIZED_BYTES];
-                for (limb, chunk) in self.0.0.iter().zip(out.chunks_exact_mut(8)) {
-                    chunk.copy_from_slice(&limb.to_be_bytes());
+                let x = self.into_repr();
+                for (limb, chunk) in x.0.iter().zip(out.chunks_exact_mut(8)) {
+                    chunk.copy_from_slice(&limb.to_le_bytes());
                 }
                 out.to_vec()
             }
-            
-            fn from_bytes(bytes: &[u8]) -> Option<Self> {
+
+            fn from_random_bytes(bytes: &[u8]) -> Option<Self> {
                 use std::convert::TryInto;
-                
-                if bytes.len() != Self::SERIALIZED_BYTES {
-                    return None;
-                }
+                assert_eq!(bytes.len(), Self::SERIALIZED_BYTES);
+
                 let mut repr = #repr::default();
                 for (limb, chunk) in repr.0.iter_mut().zip(bytes.chunks_exact(8)) {
-                    *limb = u64::from_be_bytes(chunk.try_into().unwrap());
+                    *limb = u64::from_le_bytes(chunk.try_into().unwrap());
+                }
+
+                // Mask away the unused most-significant bits.
+                repr.0.as_mut()[#top_limb_index] &= 0xffffffffffffffff >> REPR_SHAVE_BITS;
+
+                #name::from_repr(repr).ok()
+            }
+
+            fn from_bytes(bytes: &[u8]) -> Option<Self> {
+                use std::convert::TryInto;
+                assert_eq!(bytes.len(), Self::SERIALIZED_BYTES);
+
+                let mut repr = #repr::default();
+                for (limb, chunk) in repr.0.iter_mut().zip(bytes.chunks_exact(8)) {
+                    *limb = u64::from_le_bytes(chunk.try_into().unwrap());
                 }
                 let res = #name(repr);
                 if res.is_valid() {
                     return Some(res);
                 }
-                
+
                 None
             }
-            
-            
+
+
 
             #[inline(always)]
             fn frobenius_map(&mut self, _: usize) {
