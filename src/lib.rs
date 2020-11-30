@@ -1,7 +1,5 @@
 //! This crate provides traits for working with finite fields.
 
-// Catch documentation errors caused by code changes.
-#![deny(intra_doc_link_resolution_failure)]
 #![allow(unused_imports)]
 
 #[cfg(feature = "derive")]
@@ -24,11 +22,18 @@ use std::io::{self, Read, Write};
 
 /// This trait represents an element of a field.
 pub trait Field:
-    Sized + Eq + Copy + Clone + Send + Sync + fmt::Debug + fmt::Display + 'static
+    Sized
+    + Eq
+    + Copy
+    + Clone
+    + Send
+    + Sync
+    + fmt::Debug
+    + fmt::Display
+    + 'static
+    + serde::Serialize
+    + serde::Deserialize<'static>
 {
-    /// Number of bytes when this type is serialized.
-    const SERIALIZED_BYTES: usize;
-
     /// Returns an element chosen uniformly at random using a user-provided RNG.
     fn random<R: RngCore>(rng: &mut R) -> Self;
 
@@ -87,10 +92,6 @@ pub trait Field:
 
         res
     }
-
-    fn as_bytes(&self) -> Vec<u8>;
-    fn from_random_bytes(bytes: &[u8]) -> Option<Self>;
-    fn from_bytes(bytes: &[u8]) -> Option<Self>;
 }
 
 /// This trait represents an element of a field that has a square root operation described for it.
@@ -121,6 +122,8 @@ pub trait PrimeFieldRepr:
     + AsRef<[u64]>
     + AsMut<[u64]>
     + From<u64>
+    + serde::Serialize
+    + serde::Deserialize<'static>
 {
     /// Subtract another represetation from this one.
     fn sub_noborrow(&mut self, other: &Self);
@@ -305,6 +308,8 @@ pub trait PrimeField: Field {
     /// Returns the 2^s root of unity computed by exponentiating the `multiplicative_generator()`
     /// by t.
     fn root_of_unity() -> Self;
+
+    fn from_random_bytes(bytes: &[u8]) -> Option<Self>;
 }
 
 /// An "engine" is a collection of types (fields, elliptic curve groups, etc.)
