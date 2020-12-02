@@ -18,10 +18,9 @@ lazy_static = "1.4.0"
 
 [features]
 derive = ["fff_derive"]
-default = ["derive"]
 
 [badges]
 maintenance = { status = "actively-developed" }
 
-[build-dependencies]
+[target.'cfg(target_arch = "x86_64")'.build-dependencies]
 cc = "1.0.50"
