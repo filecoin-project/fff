@@ -80,7 +80,7 @@ pub fn sqrt_impl(
                     let mut beta = alpha.square();
                     beta.mul_assign(tx);
                     beta.sub_assign(1);
-                    beta.mul_assign(x);
+                    beta.mul_assign(self);
                     beta.mul_assign(alpha);
 
                     let mut square = beta.square();
