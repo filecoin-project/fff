@@ -73,6 +73,7 @@ pub fn sqrt_impl(
             impl ::fff::SqrtField for #name {
                 fn sqrt(&self) -> Option<Self> {
                     // Atkin's algorithm for q mod 8 = 5
+                    // https://github.com/ConsenSys/goff/blob/master/internal/templates/element/sqrt.go#L54
                     let mut tx = self.double();
                     let mut alpha = tx.pow(#q_minus_5_div_8);
 
