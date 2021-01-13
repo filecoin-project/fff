@@ -331,7 +331,7 @@ pub fn prime_field_impl(
     ) -> proc_macro2::TokenStream {
         let mut gen = proc_macro2::TokenStream::new();
 
-        for i in 0..limbs * 2 + 1 {
+        for i in 0..limbs + 1 {
             let tempi = get_temp(i);
             gen.extend(quote! {
                 let mut #tempi = 0;
@@ -344,39 +344,39 @@ pub fn prime_field_impl(
             });
 
             if i == 0 {
-                let temp0 = get_temp(limbs);
+                let temp0 = get_temp(i);
                 gen.extend(quote! {
                     #temp0 = ::fff::mac_with_carry_simple(0, (#b.0).0[#i], (#a.0).0[0], &mut carry);
                 });
                 for j in 1..limbs {
-                    let tempj = get_temp(limbs + j);
+                    let tempj = get_temp(j);
                     gen.extend(quote! {
                         #tempj = ::fff::mac_with_carry_simple(carry, (#a.0).0[#j], (#b.0).0[#i], &mut carry);
                     });
                 }
             } else {
-                let temp0 = get_temp(limbs);
+                let temp0 = get_temp(0);
                 gen.extend(quote! {
                     #temp0 = ::fff::mac_with_carry_simple(#temp0, (#b.0).0[#i], (#a.0).0[0], &mut carry);
                 });
                 for j in 1..limbs {
-                    let tempj = get_temp(limbs + j);
+                    let tempj = get_temp(j);
                     gen.extend(quote! {
                         #tempj = ::fff::mac_with_carry_d(#tempj, (#b.0).0[#i], (#a.0).0[#j], carry, &mut carry);
                     });
                 }
             }
 
-            let temp0 = get_temp(limbs);
+            let temp0 = get_temp(0);
             gen.extend(quote! {
                 let mut d = carry;
                 let mut m = ::fff::mac_with_carry_simple(0, #temp0, INV, &mut carry);
                 ::fff::mac_with_carry_simple(#temp0, m, MODULUS.0[0], &mut carry);
             });
             for j in 1..limbs {
-                let tempjm = get_temp(limbs + j - 1);
-                let templ = get_temp(limbs + limbs);
-                let tempj = get_temp(limbs + j);
+                let tempjm = get_temp(j - 1);
+                let templ = get_temp(limbs);
+                let tempj = get_temp(j);
                 if j == limbs - 1 {
                     gen.extend(quote! {
                         #tempjm = ::fff::mac_with_carry_e(#tempj, m, MODULUS.0[#j], carry, #templ, &mut carry);
@@ -387,14 +387,14 @@ pub fn prime_field_impl(
                     });
                 }
             }
-            let templm = get_temp(limbs + limbs - 1);
-            let templ = get_temp(limbs + limbs);
+            let templm = get_temp(limbs - 1);
+            let templ = get_temp(limbs);
             gen.extend(quote! {
                 #templm = ::fff::mac_with_carry_simple(d, carry, 1, &mut #templ);
             });
         }
         for i in 0..limbs {
-            let temp = get_temp(i + limbs);
+            let temp = get_temp(i);
 
             gen.extend(quote! {
                 (self.0).0[#i] = #temp;
