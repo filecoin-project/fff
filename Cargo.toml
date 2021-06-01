@@ -15,6 +15,7 @@ byteorder = "1"
 fff_derive = { version = "0.2.1", path = "ff_derive", optional = true }
 rand_core = "0.5"
 lazy_static = "1.4.0"
+serde = { version = "1.0", default-features = false }
 
 [features]
 default = []

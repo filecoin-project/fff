@@ -125,7 +125,7 @@ fn fetch_attr(name: &str, attrs: &[syn::Attribute]) -> Option<String> {
 // Implement PrimeFieldRepr for the wrapped ident `repr` with `limbs` limbs.
 fn prime_field_repr_impl(repr: &syn::Ident, limbs: usize) -> proc_macro2::TokenStream {
     quote! {
-        #[derive(Copy, Clone, PartialEq, Eq, Default)]
+        #[derive(Copy, Clone, PartialEq, Eq, Default, ::serde::Serialize, ::serde::Deserialize)]
         pub struct #repr(pub [u64; #limbs]);
 
         impl ::std::fmt::Debug for #repr
@@ -1004,6 +1004,20 @@ fn prime_field_impl(
             }
         }
 
+        impl ::serde::Serialize for #name {
+            fn serialize<S: ::serde::Serializer>(&self, s: S) -> Result<S::Ok, S::Error> {
+                self.into_repr().serialize(s)
+            }
+        }
+
+        impl<'de> ::serde::Deserialize<'de> for #name {
+            fn deserialize<D: serde::Deserializer<'de>>(d: D) -> Result<Self, D::Error> {
+                use serde::de::Error;
+                #name::from_repr(#repr::deserialize(d)?)
+                    .map_err(|_| D::Error::custom(stringify!(format!("deserialized bytes don't encode a valid {}", #name))))
+            }
+        }
+
         impl ::fff::PrimeField for #name {
             type Repr = #repr;
 
@@ -1043,6 +1057,21 @@ fn prime_field_impl(
 
             fn root_of_unity() -> Self {
                 #name(ROOT_OF_UNITY)
+            }
+
+
+            fn from_random_bytes(bytes: &[u8]) -> Option<Self> {
+                use std::convert::TryInto;
+
+                let mut repr = #repr::default();
+                for (limb, chunk) in repr.0.iter_mut().zip(bytes.chunks_exact(8)) {
+                    *limb = u64::from_le_bytes(chunk.try_into().unwrap());
+                }
+
+                // Mask away the unused most-significant bits.
+                repr.0.as_mut()[#top_limb_index] &= 0xffffffffffffffff >> REPR_SHAVE_BITS;
+
+                #name::from_repr(repr).ok()
             }
         }
 
