@@ -1,25 +1,32 @@
 [package]
 name = "fff"
 version = "0.3.1"
-authors = ["Sean Bowe <ewillbefull@gmail.com>"]
+authors = [
+    "Sean Bowe <ewillbefull@gmail.com>",
+    "Jack Grigg <thestr4d@gmail.com>",
+]
 description = "Library for building and interfacing with finite fields"
 readme = "README.md"
-documentation = "https://docs.rs/ff/"
+documentation = "https://docs.rs/fff/"
 homepage = "https://github.com/filecoin-project/ff"
 license = "MIT/Apache-2.0"
 repository = "https://github.com/filecoin-project/ff"
 edition = "2018"
 
 [dependencies]
-byteorder = "1"
+# TODO: the current version of `bitevec` (`0.22`) uses unstable const generics, Filecoin currently
+# targets stable Rust. This bound on the dependency version should be removed once const generics
+# are stabalized.
+bitvec = { version = "0.21", default-features = false, optional = true }
 fff_derive = { version = "0.3.0", path = "ff_derive", optional = true }
-rand_core = "0.5"
-lazy_static = "1.4.0"
-serde = { version = "1.0", default-features = false }
+rand_core = { version = "0.6", default-features = false }
+subtle = { version = "2.2.1", default-features = false, features = ["i128"] }
 
 [features]
-default = []
+default = ["bits", "std"]
+bits = ["bitvec"]
 derive = ["fff_derive"]
+std = []
 
 [badges]
 maintenance = { status = "actively-developed" }

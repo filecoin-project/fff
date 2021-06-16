@@ -1,6 +1,6 @@
 # fff
 
-> Fork of the great [ff](https://github.com/zkcrypto/ff) library.
+> Fork of the great [`ff`](https://github.com/zkcrypto/ff) library.
 
 `fff` is a finite field library written in Rust.
 
@@ -8,11 +8,19 @@
 
 * This library does not provide constant-time guarantees.
 
+## Usage
 
-The `fff` crate contains `Field`, `PrimeField`, `PrimeFieldRepr` and `SqrtField` traits.
-See the **[documentation](https://docs.rs/fff/)** for more.
+Add the `fff` crate to your `Cargo.toml`:
 
-### #![derive(PrimeField)]
+```toml
+[dependencies]
+fff = "0.3.0"
+```
+
+The `fff` crate contains the `Field` and `PrimeField` traits.
+See the **[documentation](https://docs.rs/fff)** for more.
+
+### `#[derive(PrimeField)]`
 
 If you need an implementation of a prime field, this library also provides a procedural
 macro that will expand into an efficient implementation of a prime field when supplied
@@ -23,25 +31,30 @@ First, enable the `derive` crate feature:
 
 ```toml
 [dependencies]
-fff = { version = "0.2", features = ["derive"] }
+fff = { version = "0.3.0", features = ["derive"] }
 ```
 
 And then use the macro like so:
 
 ```rust
-extern crate rand;
 #[macro_use]
 extern crate fff;
 
 #[derive(PrimeField)]
 #[PrimeFieldModulus = "52435875175126190479447740508185965837690552500527637822603658699938581184513"]
 #[PrimeFieldGenerator = "7"]
-struct Fp(FpRepr);
+#[PrimeFieldReprEndianness = "little"]
+struct Fp([u64; 4]);
 ```
 
-And that's it! `Fp` now implements `Field` and `PrimeField`. `Fp` will also implement
-`SqrtField` if supported. The library implements `FpRepr` itself and derives
-`PrimeFieldRepr` for it.
+And that's it! `Fp` now implements `Field` and `PrimeField`.
+
+## Minimum Supported Rust Version
+
+Requires Rust **1.51** or higher.
+
+Minimum supported Rust version can be changed in the future, but it will be done with a
+minor version bump.
 
 ## License
 
