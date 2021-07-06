@@ -99,8 +99,8 @@ pub trait SqrtField: Field {
     /// Returns the Legendre symbol of the field element.
     fn legendre(&self) -> LegendreSymbol;
 
-    /// Returns the square root of the field element, if it is
-    /// quadratic residue.
+    /// Returns the square root of `self` if it is a quadratic residue. Returns `Some(x)` if there
+    /// exists a field element `x` satisfying `x^2 = self (mod p)`, otherwise returns `None`.
     fn sqrt(&self) -> Option<Self>;
 }
 
@@ -282,11 +282,13 @@ pub trait PrimeField: Field {
         Some(res)
     }
 
-    /// Convert this prime field element into a biginteger representation.
+    /// Attempts to convert the `u64` limbs bigint representation of an integer `mod p`, not in
+    /// Montomgery form, into Montgomery form via `repr * R (mod p)`, failing if the input is not
+    /// smaller than the field's modulus.
     fn from_repr(_: Self::Repr) -> Result<Self, PrimeFieldDecodingError>;
 
-    /// Convert a biginteger representation into a prime field element, if
-    /// the number is an element of the field.
+    /// Converts `self` from Montgomery form into non-Montgomery form, returning a bigint of little-endian
+    /// `u64` limbs. Conversion occurs via Montgomery reduction `repr = self / R (mod p)`.
     fn into_repr(&self) -> Self::Repr;
 
     /// Returns the field characteristic; the modulus.
@@ -402,8 +404,9 @@ mod arith_impl {
         tmp as u64
     }
 
-    /// Calculate a + (b * c) + carry, returning the least significant digit
-    /// and setting carry to the most significant digit.
+    /// Multiply-accumulate operation. Calculate `a + (b * c) + carry`, returning the result's least
+    /// significant `u64` and setting `carry` to the result's overflowing bits. The overflow cannot
+    /// exceed 64 bits, i.e. `(2^64 - 1)^2 + 2(2^64 - 1) = 2^128 - 1`
     #[inline(always)]
     pub fn mac_with_carry(a: u64, b: u64, c: u64, carry: &mut u64) -> u64 {
         let tmp = (u128::from(a)) + u128::from(b) * u128::from(c) + u128::from(*carry);

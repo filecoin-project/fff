@@ -42,8 +42,12 @@ pub fn prime_field(input: proc_macro::TokenStream) -> proc_macro::TokenStream {
         .parse()
         .expect("PrimeFieldGenerator should be a number");
 
-    // The arithmetic in this library only works if the modulus*2 is smaller than the backing
-    // representation. Compute the number of limbs we need.
+    // Compute the number lf 64-bit limbs.
+    //
+    // The arithmetic in this library works only if `2 * modulus` is smaller than the backing
+    // representation `limbs * 64` bits. This is because we want to allow a carry bit to be stored
+    // in the representation, see `add_nocarry()`, without having to perform reduction
+    // `mod modulus`.
     let mut limbs = 1;
     {
         let mod2 = (&modulus) << 1; // modulus * 2
@@ -125,9 +129,28 @@ fn fetch_attr(name: &str, attrs: &[syn::Attribute]) -> Option<String> {
 // Implement PrimeFieldRepr for the wrapped ident `repr` with `limbs` limbs.
 fn prime_field_repr_impl(repr: &syn::Ident, limbs: usize) -> proc_macro2::TokenStream {
     quote! {
+        // Stores a prime field element, an integer `mod p`, using a little-endian array of `u64`s
+        // (i.e. limbs). The first limb contains the integer's least-significant 64 bits and the
+        // last limb contains the most-significant 64 bits. Storing a uint as an array of 64-bit
+        // limbs is equivalent to storing the integer in radix-2^64 representation, i.e. if `a` is
+        // an integer `mod p`, then `a = limbs[0] * 2^(64 * 0) + ... + limbs[n] * 2^(64 * n)`.
+        //
+        // Field elements are stored in Montgomery form, i.e. a field element `a ∈ Zp` is stored
+        // as `a * R mod p` where `R` is the Montgomery factor. `R` is chosen to be a power of 2
+        // greater than the modulus, i.e. `R = 2^x` where `R > p`. Choosing a Montgomery factor
+        // which is a power of two converts division by `p` (which occurs at the end of modular
+        // multiplication when reducing the product `mod p`) with division by `R` (which is much
+        // more efficient because `R` is a power of two). Storing field elements in Montgomery form
+        // makes performing a series of moduluar multiplications more efficient. Because `R` is
+        // relatively prime to `p`, multiplying every field element `a ∈ Zp` covers `Zp`:
+        // `{a * R (mod p) | ∀a ∈ Zp } = Zp`, i.e. multiplication by `R` is injective and
+        // `a * R (mod p)` is unique for each `a ∈ Zp`.
         #[derive(Copy, Clone, PartialEq, Eq, Default, ::serde::Serialize, ::serde::Deserialize)]
         pub struct #repr(pub [u64; #limbs]);
 
+        // Writes `self` as a hex string where the leftmost byte in the hex string, i.e. the two
+        // characters to the right of "0x" represent the most significant byte of `self` and the hex
+        // string's rightmost two characters represent `self`'s least-significant byte.
         impl ::std::fmt::Debug for #repr
         {
             fn fmt(&self, f: &mut ::std::fmt::Formatter) -> ::std::fmt::Result {
@@ -214,6 +237,8 @@ fn prime_field_repr_impl(repr: &syn::Ident, limbs: usize) -> proc_macro2::TokenS
                 self.0.iter().all(|&e| e == 0)
             }
 
+            // Right-shift `self` by `n` bits, i.e. `self = self / 2^n`. Shifts all limbs rightwards
+            // by `n` bits and does not perform reduction `mod p`.
             #[inline(always)]
             fn shr(&mut self, mut n: u32) {
                 if n as usize >= 64 * #limbs {
@@ -221,47 +246,57 @@ fn prime_field_repr_impl(repr: &syn::Ident, limbs: usize) -> proc_macro2::TokenS
                     return;
                 }
 
+                // Shift out any full limbs (64-bits). Every iteration of the `while`-loop replaces
+                // the most-significant non-zero limb with 0.
                 while n >= 64 {
-                    let mut t = 0;
-                    for i in self.0.iter_mut().rev() {
-                        ::std::mem::swap(&mut t, i);
+                    let mut prev_limb = 0;
+                    // Move all limbs in the array one position towards the least-significant end.
+                    for limb in self.0.iter_mut().rev() {
+                        ::std::mem::swap(&mut prev_limb, limb);
                     }
                     n -= 64;
                 }
 
+                // Shift all limbs rightwords by `n` bits. The `n` least-significant bits of a limb
+                // are shifted into the `n` most-significant bits of the next (less-significant)
+                // limb.
                 if n > 0 {
-                    let mut t = 0;
-                    for i in self.0.iter_mut().rev() {
-                        let t2 = *i << (64 - n);
-                        *i >>= n;
-                        *i |= t;
-                        t = t2;
+                    let mut bits_to_insert = 0;
+                    for limb in self.0.iter_mut().rev() {
+                        let bits_removed = *limb << (64 - n);
+                        *limb >>= n;
+                        *limb |= bits_to_insert;
+                        bits_to_insert = bits_removed;
                     }
                 }
             }
 
+            // Equivalent to `self.shr(1)`. Does not perform reduction.
             #[inline(always)]
             fn div2(&mut self) {
-                let mut t = 0;
-                for i in self.0.iter_mut().rev() {
-                    let t2 = *i << 63;
-                    *i >>= 1;
-                    *i |= t;
-                    t = t2;
+                let mut bit_from_prev_limb = 0;
+                for limb in self.0.iter_mut().rev() {
+                    let bit_shifted_out = *limb << 63;
+                    *limb >>= 1;
+                    *limb |= bit_from_prev_limb;
+                    bit_from_prev_limb = bit_shifted_out;
                 }
             }
 
+            // Equivalent to `self.shl(1)`. Does not perform reduction.
             #[inline(always)]
             fn mul2(&mut self) {
-                let mut last = 0;
-                for i in &mut self.0 {
-                    let tmp = *i >> 63;
-                    *i <<= 1;
-                    *i |= last;
-                    last = tmp;
+                let mut msb_prev_limb = 0;
+                for limb in &mut self.0 {
+                    let msb = *limb >> 63;
+                    *limb <<= 1;
+                    *limb |= msb_prev_limb;
+                    msb_prev_limb = msb;
                 }
             }
 
+            // Left-shift `self` by `n` bits, i.e. `self = self * 2^n`. Shifts all limbs leftwards
+            // by `n` bits and does not perform reduction `mod p`.
             #[inline(always)]
             fn shl(&mut self, mut n: u32) {
                 if n as usize >= 64 * #limbs {
@@ -269,39 +304,51 @@ fn prime_field_repr_impl(repr: &syn::Ident, limbs: usize) -> proc_macro2::TokenS
                     return;
                 }
 
+                // Shift full limbs (64-bits) towards the most significant-end. Each iteration of
+                // the `while`-loop replaces the least-significant non-zero limb with 0.
                 while n >= 64 {
-                    let mut t = 0;
-                    for i in &mut self.0 {
-                        ::std::mem::swap(&mut t, i);
+                    let mut prev_limb = 0;
+                    // Move all limbs one position towards the most-significant end.
+                    for limb in &mut self.0 {
+                        ::std::mem::swap(&mut prev_limb, limb);
                     }
                     n -= 64;
                 }
 
+                // Shift all limbs leftwords by `n` bits. The `n` most-significant bits of a limb
+                // are shifted into the `n` least-significant bits of the next more-significant
+                // limb.
                 if n > 0 {
-                    let mut t = 0;
-                    for i in &mut self.0 {
-                        let t2 = *i >> (64 - n);
-                        *i <<= n;
-                        *i |= t;
-                        t = t2;
+                    let mut bits_to_insert = 0;
+                    for limb in &mut self.0 {
+                        let bits_removed = *limb >> (64 - n);
+                        *limb <<= n;
+                        *limb |= bits_to_insert;
+                        bits_to_insert = bits_removed;
                     }
                 }
             }
 
+            // Returns the number of bits that are utilized in `self`.
             #[inline(always)]
             fn num_bits(&self) -> u32 {
-                let mut ret = (#limbs as u32) * 64;
-                for i in self.0.iter().rev() {
-                    let leading = i.leading_zeros();
-                    ret -= leading;
+                let mut n_bits = (#limbs as u32) * 64;
+                for limb in self.0.iter().rev() {
+                    let leading = limb.leading_zeros();
+                    n_bits -= leading;
                     if leading != 64 {
                         break;
                     }
                 }
 
-                ret
+                n_bits
             }
 
+            // Addition without wrapping `mod p`. After calling `.add_nocarry()`, `self` may exceed
+            // the modulus and will need to be reduced `mod p`. Any carry bits that exceed the
+            // most-significant bit of the representation are thrown away. Note that the number of
+            // limbs were chosen such that the addition of two field elements will not overflow the
+            // representation, i.e. for any `a, b ∈ Zp`: `a + b < 2^(64 * limbs)`.
             #[inline(always)]
             fn add_nocarry(&mut self, other: &#repr) {
                 let mut carry = 0;
@@ -410,10 +457,12 @@ fn prime_field_constants_and_sqrt(
     // reduce the cost of rejection sampling.
     let repr_shave_bits = (64 * limbs as u32) - biguint_num_bits(modulus.clone());
 
-    // Compute R = 2**(64 * limbs) mod m
+    // Compute the Montgomery factor `R = 2^(64 * limbs) (mod p)`.
     let r = (BigUint::one() << (limbs * 64)) % &modulus;
 
-    // modulus - 1 = 2^s * t
+    // Factor out the powers of two from `p - 1` by finding `s` and `t` (where `t` is odd) that
+    // satisfy the equation: `p - 1 = 2^s * t`. Rearranging the equation into `t = (p-1)/2^s` and
+    // initializing `s = 0` yields `t = p - 1`. Find the largest `s` s.t. `2^s` divides `p - 1`.
     let mut s: u32 = 0;
     let mut t = &modulus - BigUint::from_str("1").unwrap();
     while t.is_even() {
@@ -421,13 +470,28 @@ fn prime_field_constants_and_sqrt(
         s += 1;
     }
 
-    // Compute 2^s root of unity given the generator
+    // Compute a `2^s` root of unity given the generator for use in the Tonelli-Shanks algorithm. A
+    // field element `x ∈ Zp*` is a `2^s` root of unity if `x^(2^s) = 1`. We use the generator as
+    // the primitive root. Primitive roots `mod p` (where `p > 2`) are quadratic non-residues, i.e.
+    // `∄x ∈ Zp` such that `x^2` equals the primitive root. It is a fact that a quadratic
+    // non-residue raised to the `t`-th power has order `2^s`, i.e. is a `2^s` root or unity. See
+    // https://ocw.mit.edu/courses/mathematics/18-781-theory-of-numbers-spring-2012/lecture-notes/MIT18_781S12_lec11.pdf
+    // (page 2, "Tonelli's Algorithm")
+    // Multiplying by `r` puts `generator^t into Montgomery form.
     let root_of_unity = biguint_to_u64_vec(
         (exp(generator.clone(), &t, &modulus) * &r) % &modulus,
         limbs,
     );
+
+    // Convert the generator to Montgomery form.
     let generator = biguint_to_u64_vec((generator.clone() * &r) % &modulus, limbs);
 
+    // The Legendre symbol for a prime field element `a` and modulus `p` is defined:
+    // `a^(phi(p) / 2) mod p`, where `phi(p)` is the number of positive integers less than `p`
+    // which are relatively prime to `p`. When `p` is prime, all positive integers less than `p` are
+    // relatively prime to `p`, i.e. `phi(p) = p - 1`. If `a`'s Legendre symbol is `1` then `a` is
+    // a quadratic residue, i.e. has a square root `∃x ∈ Zp*` such that `a = x^2 (mod p)`,
+    // otherwise `a` is not a quadratic residue.
     let mod_minus_1_over_2 =
         biguint_to_u64_vec((&modulus - BigUint::from_str("1").unwrap()) >> 1, limbs);
     let legendre_impl = quote! {
@@ -444,12 +508,17 @@ fn prime_field_constants_and_sqrt(
         }
     };
 
+    // If `p = 3 (mod 4)` we use Shanks algorithm to compute square roots `mod p`. Otherwise, if
+    // `p = 1 (mod 16)` we use the less efficient Tonelli-Shanks algorithm.
+    // https://eprint.iacr.org/2012/685.pdf
+    //   - Shanks Algorithm (page 8, section 4A)
+    //   - Tonelli-Shanks Algorithm (page 12, algorithm 5)
     let sqrt_impl =
         if (&modulus % BigUint::from_str("4").unwrap()) == BigUint::from_str("3").unwrap() {
             let mod_minus_3_over_4 =
                 biguint_to_u64_vec((&modulus - BigUint::from_str("3").unwrap()) >> 2, limbs);
 
-            // Compute -R as (m - r)
+            // Compute `-R` where negation is computed `p - R`.
             let rneg = biguint_to_u64_vec(&modulus - &r, limbs);
 
             quote! {
@@ -460,12 +529,16 @@ fn prime_field_constants_and_sqrt(
                         // Shank's algorithm for q mod 4 = 3
                         // https://eprint.iacr.org/2012/685.pdf (page 9, algorithm 2)
 
+                        // `a1 = a^((p - 3) / 4)`
                         let mut a1 = self.pow(#mod_minus_3_over_4);
 
+                        // `a0 = (a1^2) * a`
                         let mut a0 = a1;
                         a0.square();
                         a0.mul_assign(self);
 
+                        // Note that `a0` is in Montgomery form, so `a0 = -r` in Montgomery form
+                        // implies `a0` is -1 in non-Montgomery form.
                         if a0.0 == #repr(#rneg) {
                             None
                         } else {
@@ -476,6 +549,11 @@ fn prime_field_constants_and_sqrt(
                 }
             }
         } else if (&modulus % BigUint::from_str("16").unwrap()) == BigUint::from_str("1").unwrap() {
+            // In the case where `p = 1 (mod 16)` no specialized square-root algorithm is known, see
+            // https://eprint.iacr.org/2012/685.pdf (page 2)
+            // in this case we use the Tonelli-Shanks algorithm.
+            // https://eprint.iacr.org/2012/685.pdf (page 12, algorithm 5)
+
             let t_plus_1_over_2 = biguint_to_u64_vec((&t + BigUint::one()) >> 1, limbs);
             let t = biguint_to_u64_vec(t.clone(), limbs);
 
@@ -484,9 +562,6 @@ fn prime_field_constants_and_sqrt(
                     #legendre_impl
 
                     fn sqrt(&self) -> Option<Self> {
-                        // Tonelli-Shank's algorithm for q mod 16 = 1
-                        // https://eprint.iacr.org/2012/685.pdf (page 12, algorithm 5)
-
                         match self.legendre() {
                             ::fff::LegendreSymbol::Zero => Some(*self),
                             ::fff::LegendreSymbol::QuadraticNonResidue => None,
@@ -499,6 +574,7 @@ fn prime_field_constants_and_sqrt(
                                 while t != Self::one() {
                                     let mut i = 1;
                                     {
+                                        // `t^(2 * i)`
                                         let mut t2i = t;
                                         t2i.square();
                                         loop {
@@ -529,13 +605,36 @@ fn prime_field_constants_and_sqrt(
             quote! {}
         };
 
-    // Compute R^2 mod m
+    // Compute R^2 mod p
     let r2 = biguint_to_u64_vec((&r * &r) % &modulus, limbs);
 
     let r = biguint_to_u64_vec(r, limbs);
     let modulus = biguint_to_real_u64_vec(modulus, limbs);
 
-    // Compute -m^-1 mod 2**64 by exponentiating by totient(2**64) - 1
+    // Compute `-(p^-1) mod 2^64` using square-and-multiply exponentiation.
+    //
+    // From Euler's theorem we know that if `gcd(a, n) = 1` that `a^-1 = a^(phi(n) - 1) (mod n)`
+    // where `phi` is the totient function. We know that `gcd(p, 2^64) = 1` because `p` is prime,
+    // thus we can use Euler's theorem to compute `p^-1 mod 2^64`. It is a fact that
+    // `phi(2^x) = 2^(x - 1)`; we substitute this into the Euler's theorem for modulus 2^64 yielding
+    // `p^-1 = p^(2^63 - 1) (mod 2^64)`. The exponent `2^63 - 1` written as a bitstring 0b111...111
+    // is 63 ones, thus we can compute `p^(2^63 - 1)` via 63 rounds of square-and-multiply on
+    // `p`.
+    //
+    // Notice that when we represent a non-negative integer `x` using 64-bit limbs that
+    // `x mod 2^64 = limbs[0]`. For example, if `p` has four `u64` limbs then:
+    //
+    // p mod 2^64
+    //     = limbs[0]*2^(64*0) + limbs[1]*2^(64*1) + limbs[2]*2^(64*2) + limbs[3]*2^(64*3) (mod 2^64)
+    //     = limbs[0]*2^(64*0) + 0                 + 0                 + 0                 (mod 2^64)
+    //     = limbs[0]
+    //
+    // thus, we can substitute `p mod 2^64 = limbs[0]` into the inversion equation
+    // `p^-1 = limbs[0]^(2^63 - 1) (mod 2^64)`.
+    //
+    // We compute the negation of the inverse `-(p^-1) mod 2^64` using `wrapping_neg()`. When
+    // applied to `u64`s, the `wrapping_mul` and `wrapping_neg` methods are equivalent to performing
+    // multiplication and negation `mod 2^64`.
     let mut inv = 1u64;
     for _ in 0..63 {
         inv = inv.wrapping_mul(inv);
@@ -561,7 +660,7 @@ fn prime_field_constants_and_sqrt(
             /// 2^{limbs*64*2} mod m
             const R2: #repr = #repr(#r2);
 
-            /// -(m^{-1} mod m) mod m
+            /// `-(p^-1) mod 2^64` (usually denoted m' or p') used in Montgomery reduction.
             const INV: u64 = #inv;
 
             /// Multiplicative generator of `MODULUS` - 1 order, also quadratic
@@ -604,7 +703,9 @@ fn prime_field_impl(
         proc_macro2::Punct::new(',', proc_macro2::Spacing::Alone),
     );
 
-    // Implement montgomery reduction for some number of limbs
+    // Implements Montgomery reduction for some number of limbs. See the paper
+    // "Efficient Software-Implementation of Finite Fields with Applications to Cryptography"
+    // (Algorithm 14. Montgomery Reduction)
     fn mont_impl(limbs: usize) -> proc_macro2::TokenStream {
         let mut gen = proc_macro2::TokenStream::new();
 
@@ -730,6 +831,8 @@ fn prime_field_impl(
             proc_macro2::Punct::new(',', proc_macro2::Spacing::Alone),
         );
 
+        // Multiply the intermediary Montgomery product `(a * b) * R^2` by `R^1` to yield
+        // `(a * b) * R`, the product `a * b` in Montgomery form.
         gen.extend(quote! {
             self.mont_reduce(#mont_calling);
         });
@@ -1021,9 +1124,19 @@ fn prime_field_impl(
         impl ::fff::PrimeField for #name {
             type Repr = #repr;
 
+            // Attempt to convert the bigint representation of a field element (not in Montgomery
+            // form) into Montgomery form, failing if `r` represents an integer greater than the
+            // modulus.
             fn from_repr(r: #repr) -> Result<#name, PrimeFieldDecodingError> {
                 let mut r = #name(r);
                 if r.is_valid() {
+                    // We can put `r` into Montgomery form by taking the Montgomery product of `r`
+                    // with `R^2 mod p`, i.e. `MontReduce(MontProd(a, R^2)) = aR (mod p)`.
+                    // See "Montgomery’s Multiplication Technique: How to Make It Smaller and Faster"
+                    // https://colinandmargaret.co.uk/Research/CDW_CHES_99.pdf (page 8)
+                    // and the Wikipedia article:
+                    // https://en.wikipedia.org/wiki/Montgomery_modular_multiplication#Arithmetic_in_Montgomery_form
+                    // for more information regarding converting to and from Montgomery form.
                     r.mul_assign(&#name(R2));
 
                     Ok(r)
@@ -1032,6 +1145,9 @@ fn prime_field_impl(
                 }
             }
 
+            // Convert `self` out of Montgomery form, returning the bigint representation. If
+            // is in Montgomery form `self = a * R (mod p)` then Montgomery reduction removes the
+            // factor of `R`, i.e. `MontReduce(a * R mod p) = a mod p`.
             fn into_repr(&self) -> #repr {
                 let mut r = *self;
                 r.mont_reduce(
@@ -1234,6 +1350,8 @@ fn prime_field_impl(
                 }
             }
 
+            // Perform Montgomery reduction on the integer `self` (which may be larger than the
+            // modulus).
             #[inline(always)]
             fn mont_reduce(
                 &mut self,
